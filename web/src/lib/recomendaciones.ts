@@ -183,3 +183,184 @@ export async function getRecomendacionRutina(userId: number | null): Promise<Rec
     descuentoPorcentaje,
   };
 }
+
+export interface ProductoRutinaResponse {
+  esRutina3Pasos: boolean;
+  paso1?: RoutineStepProduct;
+  paso2?: RoutineStepProduct;
+  paso3?: RoutineStepProduct;
+  combo?: any | null;
+}
+
+/**
+ * Obtiene la sección "Completa tu rutina" para la ficha de un producto.
+ * Si el producto es limpiador, serum o protector: arma la rutina de 3 pasos con este fijo.
+ * Si no: busca un combo activo que lo contenga.
+ */
+export async function getRutinaParaProducto(
+  productoId: number,
+  userId: number | null
+): Promise<ProductoRutinaResponse> {
+  const pool = getDbPool();
+
+  // 1. Consultar el producto actual
+  const [prodRows]: any = await pool.execute(
+    `SELECT 
+      p.id, 
+      p.nombre, 
+      p.slug, 
+      p.tipo_rutina, 
+      c.nombre as categoria_nombre, 
+      p.precio, 
+      p.precio_especial, 
+      p.color_fondo, 
+      p.color_frasco,
+      COALESCE(SUM(i.existencias), 0) as total_stock
+     FROM productos p
+     JOIN categorias c ON c.id = p.categoria_id
+     LEFT JOIN inventario i ON i.producto_id = p.id
+     WHERE p.id = ? AND p.activo = 1
+     GROUP BY p.id`,
+    [productoId]
+  );
+
+  if (!prodRows || prodRows.length === 0) {
+    return { esRutina3Pasos: false, combo: null };
+  }
+
+  const currentProd = prodRows[0];
+  const currentStep = currentProd.tipo_rutina;
+
+  const currentStepProduct: RoutineStepProduct = {
+    id: Number(currentProd.id),
+    nombre: currentProd.nombre,
+    slug: currentProd.slug,
+    tipo_rutina: currentProd.tipo_rutina,
+    categoria_nombre: currentProd.categoria_nombre,
+    precio: Number(currentProd.precio),
+    precio_especial: currentProd.precio_especial ? Number(currentProd.precio_especial) : null,
+    color_fondo: currentProd.color_fondo,
+    color_frasco: currentProd.color_frasco,
+    total_stock: Number(currentProd.total_stock),
+  };
+
+  const RUTINA_VALID_STEPS = ["limpiador", "serum", "protector"];
+
+  if (RUTINA_VALID_STEPS.includes(currentStep)) {
+    // Es uno de los 3 pasos: fijamos este producto y buscamos los otros dos
+    const routineData = await getRecomendacionRutina(userId);
+
+    // Si no hay perfil, buscamos los más vendidos para los pasos faltantes
+    const getFallbackStep = async (step: string) => {
+      const [rows]: any = await pool.execute(
+        `SELECT 
+          p.id, p.nombre, p.slug, p.tipo_rutina, c.nombre as categoria_nombre, 
+          p.precio, p.precio_especial, p.color_fondo, p.color_frasco,
+          COALESCE(SUM(i.existencias), 0) as total_stock
+         FROM productos p
+         JOIN categorias c ON c.id = p.categoria_id
+         LEFT JOIN inventario i ON i.producto_id = p.id
+         WHERE p.tipo_rutina = ? AND p.activo = 1 AND p.id != ?
+         GROUP BY p.id
+         HAVING total_stock > 0
+         ORDER BY (
+           SELECT COALESCE(SUM(pi.cantidad), 0) 
+           FROM pedido_items pi 
+           WHERE pi.producto_id = p.id
+         ) DESC, p.id ASC
+         LIMIT 1`,
+        [step, productoId]
+      );
+      if (!rows || rows.length === 0) return undefined;
+      const r = rows[0];
+      return {
+        id: Number(r.id),
+        nombre: r.nombre,
+        slug: r.slug,
+        tipo_rutina: r.tipo_rutina,
+        categoria_nombre: r.categoria_nombre,
+        precio: Number(r.precio),
+        precio_especial: r.precio_especial ? Number(r.precio_especial) : null,
+        color_fondo: r.color_fondo,
+        color_frasco: r.color_frasco,
+        total_stock: Number(r.total_stock),
+      };
+    };
+
+    let paso1: RoutineStepProduct | undefined;
+    let paso2: RoutineStepProduct | undefined;
+    let paso3: RoutineStepProduct | undefined;
+
+    if (currentStep === "limpiador") {
+      paso1 = currentStepProduct;
+      paso2 = routineData?.paso2 || (await getFallbackStep("serum"));
+      paso3 = routineData?.paso3 || (await getFallbackStep("protector"));
+    } else if (currentStep === "serum") {
+      paso1 = routineData?.paso1 || (await getFallbackStep("limpiador"));
+      paso2 = currentStepProduct;
+      paso3 = routineData?.paso3 || (await getFallbackStep("protector"));
+    } else if (currentStep === "protector") {
+      paso1 = routineData?.paso1 || (await getFallbackStep("limpiador"));
+      paso2 = routineData?.paso2 || (await getFallbackStep("serum"));
+      paso3 = currentStepProduct;
+    }
+
+    return {
+      esRutina3Pasos: true,
+      paso1,
+      paso2,
+      paso3,
+      combo: null,
+    };
+  }
+
+  // Si no pertenece a limpiador, serum o protector: buscamos si hay un combo activo que lo incluya
+  const [comboRows]: any = await pool.execute(
+    `SELECT c.id, c.nombre, c.slug, c.descripcion_corta, c.descuento_porcentaje, c.color_fondo
+     FROM combos c
+     JOIN combo_productos cp ON cp.combo_id = c.id
+     WHERE cp.producto_id = ? AND c.activo = 1
+     LIMIT 1`,
+    [productoId]
+  );
+
+  if (comboRows && comboRows.length > 0) {
+    const c = comboRows[0];
+    const [prodItems]: any = await pool.execute(
+      `SELECT cp.producto_id, cp.cantidad, p.nombre, p.precio, p.precio_especial,
+              COALESCE(SUM(i.existencias), 0) as total_stock
+       FROM combo_productos cp
+       JOIN productos p ON p.id = cp.producto_id
+       LEFT JOIN inventario i ON i.producto_id = cp.producto_id
+       WHERE cp.combo_id = ?
+       GROUP BY cp.producto_id`,
+      [c.id]
+    );
+
+    const prods = prodItems || [];
+    const subtotal = prods.reduce((acc: number, item: any) => {
+      return acc + Number(item.precio_especial ?? item.precio) * Number(item.cantidad);
+    }, 0);
+    const descPct = Number(c.descuento_porcentaje || 0);
+    const finalPrice = Math.round(subtotal * (1 - descPct / 100));
+    const agotado = prods.some((p: any) => Number(p.total_stock) < Number(p.cantidad));
+
+    return {
+      esRutina3Pasos: false,
+      combo: {
+        id: Number(c.id),
+        nombre: c.nombre,
+        slug: c.slug,
+        descripcion_corta: c.descripcion_corta,
+        descuento_porcentaje: descPct,
+        color_fondo: c.color_fondo,
+        precio_original: subtotal,
+        precio_final: finalPrice,
+        agotado,
+        productos: prods,
+      },
+    };
+  }
+
+  return { esRutina3Pasos: false, combo: null };
+}
