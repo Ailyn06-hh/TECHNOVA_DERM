@@ -7,3 +7,4 @@ export * from "./normalizar";
 export * from "./mensajes";
 export * from "./contrasenas-comunes";
 export * from "./contrasena";
+export * from "./registro";

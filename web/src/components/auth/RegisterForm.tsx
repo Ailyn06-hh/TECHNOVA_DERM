@@ -1,16 +1,18 @@
 "use client";
 
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Lock, Eye, EyeOff, Phone, AlertCircle, Loader2 } from "lucide-react";
 import InfoBanner from "./InfoBanner";
 import PasswordRequirements from "./PasswordRequirements";
 import {
+  validarNombre,
+  validarApellido,
+  validarCorreo,
+  validarCelular,
   validarContrasena,
-  normalizarTexto,
-  normalizarCorreo,
-  normalizarCelular,
+  validarTerminos,
   MENSAJES_VALIDACION,
 } from "@/lib/validaciones";
 
@@ -30,6 +32,10 @@ export default function RegisterForm() {
   });
 
   const [isPasswordFocused, setIsPasswordFocused] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [generalError, setGeneralError] = useState<string | null>(null);
 
   // Precargar datos si viene de "Cambiarlo" en /verificar (?edit=true)
   useEffect(() => {
@@ -52,12 +58,7 @@ export default function RegisterForm() {
     }
   }, [isEditing]);
 
-  const [showPassword, setShowPassword] = useState(false);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [errors, setErrors] = useState<Record<string, string>>({});
-  const [generalError, setGeneralError] = useState<string | null>(null);
-
-  // Validación reactiva de contraseña en tiempo real para PasswordRequirements
+  // Validación reactiva de contraseña en tiempo real para el widget PasswordRequirements
   const passwordResult = useMemo(() => {
     return validarContrasena(formData.password, {
       nombre: formData.nombre,
@@ -66,106 +67,165 @@ export default function RegisterForm() {
     });
   }, [formData.password, formData.nombre, formData.apellido, formData.correo]);
 
-  const validateClient = () => {
-    const errs: Record<string, string> = {};
-
-    const cleanNombre = normalizarTexto(formData.nombre);
-    if (!cleanNombre) {
-      errs.nombre = MENSAJES_VALIDACION.NOMBRE_REQUERIDO;
-    } else if (cleanNombre.length < 2) {
-      errs.nombre = MENSAJES_VALIDACION.NOMBRE_MIN_LONGITUD;
+  // Validador de un campo individual usando el módulo centralizado lib/validaciones
+  const validateField = (fieldName: string, value: any, currentValues = formData) => {
+    switch (fieldName) {
+      case "nombre": {
+        const res = validarNombre(value);
+        return res.valida ? null : res.error;
+      }
+      case "apellido": {
+        const res = validarApellido(value);
+        return res.valida ? null : res.error;
+      }
+      case "correo": {
+        const res = validarCorreo(value);
+        return res.valida ? null : res.error;
+      }
+      case "celular": {
+        const res = validarCelular(value);
+        return res.valida ? null : res.error;
+      }
+      case "password": {
+        const res = validarContrasena(value, {
+          nombre: currentValues.nombre,
+          apellido: currentValues.apellido,
+          correo: currentValues.correo,
+        });
+        return res.valida
+          ? null
+          : res.errores[0] || MENSAJES_VALIDACION.CONTRASENA_NO_CUMPLE_REQUISITOS;
+      }
+      case "acepta_terminos": {
+        const res = validarTerminos(value);
+        return res.valida ? null : res.error;
+      }
+      default:
+        return null;
     }
-
-    const cleanApellido = normalizarTexto(formData.apellido);
-    if (!cleanApellido) {
-      errs.apellido = MENSAJES_VALIDACION.APELLIDO_REQUERIDO;
-    } else if (cleanApellido.length < 2) {
-      errs.apellido = MENSAJES_VALIDACION.APELLIDO_MIN_LONGITUD;
-    }
-
-    const cleanEmail = normalizarCorreo(formData.correo);
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!cleanEmail) {
-      errs.correo = MENSAJES_VALIDACION.CORREO_REQUERIDO;
-    } else if (!emailRegex.test(cleanEmail)) {
-      errs.correo = MENSAJES_VALIDACION.CORREO_INVALIDO;
-    }
-
-    const cleanPhone = normalizarCelular(formData.celular);
-    if (!cleanPhone) {
-      errs.celular = MENSAJES_VALIDACION.CELULAR_REQUERIDO;
-    } else if (cleanPhone.length !== 10) {
-      errs.celular = MENSAJES_VALIDACION.CELULAR_INVALIDO;
-    }
-
-    // Validación estricta de contraseña compartida con backend
-    const passRes = validarContrasena(formData.password, {
-      nombre: cleanNombre,
-      apellido: cleanApellido,
-      correo: cleanEmail,
-    });
-    if (!passRes.valida) {
-      errs.password =
-        passRes.errores[0] || MENSAJES_VALIDACION.CONTRASENA_NO_CUMPLE_REQUISITOS;
-    }
-
-    if (!formData.acepta_terminos) {
-      errs.acepta_terminos = MENSAJES_VALIDACION.TERMINOS_REQUERIDOS;
-    }
-
-    setErrors(errs);
-    return Object.keys(errs).length === 0;
   };
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const { name, value, type, checked } = e.target;
-    setFormData((prev) => ({
-      ...prev,
-      [name]: type === "checkbox" ? checked : value,
-    }));
+  // Al salir del campo (blur): se valida el campo por primera vez
+  const handleBlur = (fieldName: string) => {
+    if (fieldName === "password") {
+      setIsPasswordFocused(false);
+    }
 
-    // Limpiar error del campo editado
-    if (errors[name]) {
+    const errorMsg = validateField(
+      fieldName,
+      formData[fieldName as keyof typeof formData]
+    );
+
+    if (errorMsg) {
+      setErrors((prev) => ({ ...prev, [fieldName]: errorMsg }));
+    } else {
       setErrors((prev) => {
         const updated = { ...prev };
-        delete updated[name];
+        delete updated[fieldName];
         return updated;
       });
     }
+  };
+
+  // Al escribir (change): solo se revalida si ya tenía error previo, para quitarlo de inmediato
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const { name, value, type, checked } = e.target;
+    const val = type === "checkbox" ? checked : value;
+    const updatedData = { ...formData, [name]: val };
+    setFormData(updatedData);
+
+    // Si ya tenía error, se revalida mientras el usuario escribe para quitar el error en cuanto lo corrija
+    if (errors[name]) {
+      const errorMsg = validateField(name, val, updatedData);
+      if (!errorMsg) {
+        setErrors((prev) => {
+          const updated = { ...prev };
+          delete updated[name];
+          return updated;
+        });
+      } else {
+        setErrors((prev) => ({ ...prev, [name]: errorMsg }));
+      }
+    }
+
     if (generalError) setGeneralError(null);
   };
 
+  // Al enviar: se validan todos los campos y el foco va al primer campo con error
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!validateClient()) return;
+    const fields = [
+      "nombre",
+      "apellido",
+      "correo",
+      "celular",
+      "password",
+      "acepta_terminos",
+    ] as const;
+
+    const newErrors: Record<string, string> = {};
+
+    for (const f of fields) {
+      const err = validateField(f, formData[f], formData);
+      if (err) {
+        newErrors[f] = err;
+      }
+    }
+
+    if (Object.keys(newErrors).length > 0) {
+      setErrors(newErrors);
+
+      // Foco va al primer campo con error
+      const firstErrorField = fields.find((f) => newErrors[f]);
+      if (firstErrorField) {
+        const el = document.getElementById(firstErrorField);
+        if (el) {
+          el.focus();
+          el.scrollIntoView({ behavior: "smooth", block: "center" });
+        }
+      }
+      return;
+    }
 
     try {
       setIsSubmitting(true);
       setGeneralError(null);
 
-      // Enviamos datos normalizados; la contraseña va íntegra sin recortes
-      const payload = {
-        nombre: normalizarTexto(formData.nombre),
-        apellido: normalizarTexto(formData.apellido),
-        correo: normalizarCorreo(formData.correo),
-        celular: normalizarCelular(formData.celular),
-        password: formData.password,
-        acepta_terminos: formData.acepta_terminos,
-        acepta_promociones: formData.acepta_promociones,
-      };
-
+      // Enviamos el payload al backend
       const res = await fetch("/api/auth/registro", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({
+          nombre: formData.nombre,
+          apellido: formData.apellido,
+          correo: formData.correo,
+          celular: formData.celular,
+          password: formData.password,
+          acepta_terminos: formData.acepta_terminos,
+          acepta_promociones: formData.acepta_promociones,
+        }),
       });
 
       const data = await res.json();
 
       if (!res.ok) {
-        if (data.field) {
-          setErrors((prev) => ({ ...prev, [data.field]: data.error }));
+        if (data.errores) {
+          setErrors(data.errores);
+
+          if (data.errores.general) {
+            setGeneralError(data.errores.general);
+          }
+
+          // Foco al primer campo con error devuelto por el servidor
+          const firstErrorField = fields.find((f) => data.errores[f]);
+          if (firstErrorField) {
+            const el = document.getElementById(firstErrorField);
+            if (el) {
+              el.focus();
+              el.scrollIntoView({ behavior: "smooth", block: "center" });
+            }
+          }
         } else {
           setGeneralError(data.error || "Ocurrió un error al registrar tu cuenta.");
         }
@@ -174,7 +234,7 @@ export default function RegisterForm() {
 
       // Redirección exitosa a la pantalla de verificación
       router.push(data.redirectUrl || "/verificar");
-    } catch (err: any) {
+    } catch {
       setGeneralError("Error de conexión al servidor. Verifica que MySQL esté activo en XAMPP.");
     } finally {
       setIsSubmitting(false);
@@ -194,7 +254,11 @@ export default function RegisterForm() {
       </div>
 
       {generalError && (
-        <div className="mb-5 p-3.5 bg-rose-50 border border-rose-200 text-rose-800 text-xs rounded-xl flex items-start gap-2 animate-fade-in">
+        <div
+          role="alert"
+          aria-live="assertive"
+          className="mb-5 p-3.5 bg-rose-50 border border-rose-200 text-rose-800 text-xs rounded-xl flex items-start gap-2 animate-fade-in"
+        >
           <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
           <span>{generalError}</span>
         </div>
@@ -214,8 +278,10 @@ export default function RegisterForm() {
               name="nombre"
               type="text"
               autoComplete="given-name"
+              maxLength={50}
               value={formData.nombre}
               onChange={handleChange}
+              onBlur={() => handleBlur("nombre")}
               placeholder="Ana"
               className={`w-full px-3.5 py-2.5 rounded-xl border bg-white text-xs sm:text-sm text-gray-900 placeholder-gray-400 transition shadow-sm focus:outline-none focus:ring-2 focus:ring-[#6B1F4A]/30 focus:border-[#6B1F4A] ${
                 errors.nombre ? "border-rose-400 focus:ring-rose-200 focus:border-rose-500" : "border-gray-200"
@@ -240,8 +306,10 @@ export default function RegisterForm() {
               name="apellido"
               type="text"
               autoComplete="family-name"
+              maxLength={50}
               value={formData.apellido}
               onChange={handleChange}
+              onBlur={() => handleBlur("apellido")}
               placeholder="López"
               className={`w-full px-3.5 py-2.5 rounded-xl border bg-white text-xs sm:text-sm text-gray-900 placeholder-gray-400 transition shadow-sm focus:outline-none focus:ring-2 focus:ring-[#6B1F4A]/30 focus:border-[#6B1F4A] ${
                 errors.apellido ? "border-rose-400 focus:ring-rose-200 focus:border-rose-500" : "border-gray-200"
@@ -267,8 +335,10 @@ export default function RegisterForm() {
             name="correo"
             type="email"
             autoComplete="email"
+            maxLength={254}
             value={formData.correo}
             onChange={handleChange}
+            onBlur={() => handleBlur("correo")}
             placeholder="ana.lopez@correo.com"
             className={`w-full px-3.5 py-2.5 rounded-xl border bg-white text-xs sm:text-sm text-gray-900 placeholder-gray-400 transition shadow-sm focus:outline-none focus:ring-2 focus:ring-[#6B1F4A]/30 focus:border-[#6B1F4A] ${
               errors.correo ? "border-rose-400 focus:ring-rose-200 focus:border-rose-500" : "border-gray-200"
@@ -277,10 +347,23 @@ export default function RegisterForm() {
             aria-describedby={errors.correo ? "correo-error" : undefined}
           />
           {errors.correo && (
-            <p id="correo-error" className="mt-1 text-[11px] text-rose-600 flex items-center gap-1 font-light">
-              <AlertCircle className="w-3 h-3 shrink-0" />
-              <span>{errors.correo}</span>
-            </p>
+            <div id="correo-error" className="mt-1 text-[11px] text-rose-600 flex items-start gap-1 font-light">
+              <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+              <div>
+                <span>{errors.correo}</span>
+                {errors.correo.includes("Este correo ya tiene una cuenta") && (
+                  <>
+                    <span>. </span>
+                    <Link
+                      href="/login"
+                      className="text-[#6B1F4A] font-semibold underline hover:text-[#58183D] transition ml-0.5"
+                    >
+                      Iniciar sesión
+                    </Link>
+                  </>
+                )}
+              </div>
+            </div>
           )}
         </div>
 
@@ -301,6 +384,7 @@ export default function RegisterForm() {
               maxLength={15}
               value={formData.celular}
               onChange={handleChange}
+              onBlur={() => handleBlur("celular")}
               placeholder="449 123 4567"
               className={`w-full pl-10 pr-4 py-2.5 rounded-xl border bg-white text-xs sm:text-sm text-gray-900 placeholder-gray-400 transition shadow-sm focus:outline-none focus:ring-2 focus:ring-[#6B1F4A]/30 focus:border-[#6B1F4A] ${
                 errors.celular ? "border-rose-400 focus:ring-rose-200 focus:border-rose-500" : "border-gray-200"
@@ -334,7 +418,7 @@ export default function RegisterForm() {
               value={formData.password}
               onChange={handleChange}
               onFocus={() => setIsPasswordFocused(true)}
-              onBlur={() => setIsPasswordFocused(false)}
+              onBlur={() => handleBlur("password")}
               placeholder="••••••••••"
               className={`w-full pl-10 pr-10 py-2.5 rounded-xl border bg-white text-xs sm:text-sm text-gray-900 placeholder-gray-400 transition shadow-sm focus:outline-none focus:ring-2 focus:ring-[#6B1F4A]/30 focus:border-[#6B1F4A] ${
                 errors.password ? "border-rose-400 focus:ring-rose-200 focus:border-rose-500" : "border-gray-200"
@@ -377,6 +461,7 @@ export default function RegisterForm() {
               name="acepta_terminos"
               checked={formData.acepta_terminos}
               onChange={handleChange}
+              onBlur={() => handleBlur("acepta_terminos")}
               className="w-4 h-4 mt-0.5 rounded text-[#6B1F4A] border-gray-300 focus:ring-[#6B1F4A] accent-[#6B1F4A] cursor-pointer"
             />
             <span className="text-xs text-gray-600 font-light leading-snug">

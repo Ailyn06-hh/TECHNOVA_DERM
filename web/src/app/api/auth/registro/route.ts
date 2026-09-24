@@ -7,16 +7,66 @@ import {
   PENDING_COOKIE_NAME,
 } from "@/lib/auth-verification";
 import {
-  normalizarTexto,
-  normalizarCorreo,
-  normalizarCelular,
-  validarContrasena,
+  validarRegistro,
   MENSAJES_VALIDACION,
 } from "@/lib/validaciones";
+import {
+  obtenerIpCliente,
+  verificarLimiteRegistroIp,
+  registrarIntentoRegistroIp,
+} from "@/lib/rate-limiter";
 
 export async function POST(req: NextRequest) {
   try {
-    const body = await req.json();
+    // 1. Rate Limiter: Máximo 5 registros por IP cada hora
+    const ip = obtenerIpCliente(req);
+    const estadoRateLimit = verificarLimiteRegistroIp(ip);
+
+    if (!estadoRateLimit.permitido) {
+      return NextResponse.json(
+        {
+          errores: {
+            general: MENSAJES_VALIDACION.RATE_LIMIT_REGISTRO,
+          },
+        },
+        {
+          status: 429,
+          headers: {
+            "Retry-After": String(estadoRateLimit.reintentoEnSegundos || 3600),
+          },
+        }
+      );
+    }
+
+    let body: any;
+    try {
+      body = await req.json();
+    } catch {
+      return NextResponse.json(
+        {
+          errores: {
+            general: "Cuerpo de solicitud JSON malformado.",
+          },
+        },
+        { status: 400 }
+      );
+    }
+
+    // 2. Validación centralizada del servidor:
+    // - Rechaza campos desconocidos
+    // - Verifica tipos de datos
+    // - Aplica reglas de Nombre, Apellido, Correo, Celular y Contraseña
+    const validacion = validarRegistro(body, {
+      verificarCamposDesconocidos: true,
+    });
+
+    if (!validacion.valido) {
+      return NextResponse.json(
+        { errores: validacion.errores },
+        { status: 400 }
+      );
+    }
+
     const {
       nombre,
       apellido,
@@ -25,133 +75,80 @@ export async function POST(req: NextRequest) {
       password,
       acepta_terminos,
       acepta_promociones,
-    } = body;
+    } = validacion.datosLimpios;
 
-    // 1. Normalización y validaciones del lado del servidor
-    const cleanNombre = normalizarTexto(nombre);
-    if (!cleanNombre || cleanNombre.length < 2) {
-      return NextResponse.json(
-        { error: MENSAJES_VALIDACION.NOMBRE_REQUERIDO, field: "nombre" },
-        { status: 400 }
-      );
-    }
-
-    const cleanApellido = normalizarTexto(apellido);
-    if (!cleanApellido || cleanApellido.length < 2) {
-      return NextResponse.json(
-        { error: MENSAJES_VALIDACION.APELLIDO_REQUERIDO, field: "apellido" },
-        { status: 400 }
-      );
-    }
-
-    const cleanEmail = normalizarCorreo(correo);
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!cleanEmail || !emailRegex.test(cleanEmail)) {
-      return NextResponse.json(
-        { error: MENSAJES_VALIDACION.CORREO_INVALIDO, field: "correo" },
-        { status: 400 }
-      );
-    }
-
-    const cleanPhone = normalizarCelular(celular);
-    if (cleanPhone.length !== 10) {
-      return NextResponse.json(
-        { error: MENSAJES_VALIDACION.CELULAR_INVALIDO, field: "celular" },
-        { status: 400 }
-      );
-    }
-
-    // Validación exhaustiva de contraseña (límite 72 bytes, no común, sin datos personales)
-    const passResult = validarContrasena(password, {
-      nombre: cleanNombre,
-      apellido: cleanApellido,
-      correo: cleanEmail,
-    });
-
-    if (!passResult.valida) {
-      return NextResponse.json(
-        {
-          error: passResult.errores[0] || MENSAJES_VALIDACION.CONTRASENA_NO_CUMPLE_REQUISITOS,
-          field: "password",
-          errores: passResult.errores,
-        },
-        { status: 400 }
-      );
-    }
-
-    if (!acepta_terminos) {
-      return NextResponse.json(
-        {
-          error: "Debes aceptar el aviso de privacidad y los términos para continuar.",
-          field: "acepta_terminos",
-        },
-        { status: 400 }
-      );
-    }
-
-    // 2. Conectar al pool de MySQL (XAMPP) y verificar que no existan duplicados
     const pool = getDbPool();
 
-    // Consulta parametrizada anti-inyección SQL
+    // 3. Verificación de unicidad previa en la base de datos
     const [existingRows]: any = await pool.execute(
       "SELECT id, correo, celular FROM usuarios WHERE correo = ? OR celular = ? LIMIT 1",
-      [cleanEmail, cleanPhone]
+      [correo, celular]
     );
 
     if (existingRows && existingRows.length > 0) {
       const match = existingRows[0];
-      if (match.correo.toLowerCase() === cleanEmail) {
-        return NextResponse.json(
-          {
-            error: "Este correo electrónico ya está registrado. Inicia sesión o usa otro.",
-            field: "correo",
-          },
-          { status: 409 }
-        );
+      const errMap: Record<string, string> = {};
+
+      if (match.correo.toLowerCase() === correo.toLowerCase()) {
+        errMap.correo = MENSAJES_VALIDACION.CORREO_DUPLICADO;
       }
-      if (match.celular === cleanPhone) {
-        return NextResponse.json(
-          {
-            error: "Este número celular ya está registrado con otra cuenta.",
-            field: "celular",
-          },
-          { status: 409 }
-        );
+      if (match.celular === celular) {
+        errMap.celular = MENSAJES_VALIDACION.CELULAR_DUPLICADO;
       }
+
+      return NextResponse.json({ errores: errMap }, { status: 409 });
     }
 
-    // 3. Hashear la contraseña con bcrypt (cost factor 10)
+    // 4. Hashear la contraseña con bcrypt (cost factor 10)
     const passwordHash = await bcrypt.hash(password, 10);
 
-    // 4. Inserción con consulta estrictamente parametrizada
-    const [insertResult]: any = await pool.execute(
-      `INSERT INTO usuarios 
-        (nombre, apellido, correo, celular, password_hash, acepta_terminos, acepta_promociones) 
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      [
-        nombre.trim(),
-        apellido.trim(),
-        cleanEmail,
-        cleanPhone,
-        passwordHash,
-        acepta_terminos ? 1 : 0,
-        acepta_promociones ? 1 : 0,
-      ]
-    );
+    // 5. Inserción en base de datos con captura de condición de carrera (ER_DUP_ENTRY)
+    let newUserId: number;
 
-    const newUserId = insertResult.insertId;
+    try {
+      const [insertResult]: any = await pool.execute(
+        `INSERT INTO usuarios 
+          (nombre, apellido, correo, celular, password_hash, acepta_terminos, acepta_promociones) 
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        [
+          nombre,
+          apellido,
+          correo,
+          celular,
+          passwordHash,
+          acepta_terminos ? 1 : 0,
+          acepta_promociones ? 1 : 0,
+        ]
+      );
 
-    // TODO: Vincular pedidos previos realizados como invitada con este correo o celular
-    // Ejemplo:
-    // await pool.execute(
-    //   "UPDATE orders SET customer_user_id = ? WHERE customer_email = ? OR customer_phone = ?",
-    //   [newUserId, cleanEmail, cleanPhone]
-    // );
+      newUserId = insertResult.insertId;
+    } catch (dbError: any) {
+      // Capturar colisión concurrente mediante los índices UNIQUE de MySQL (ER_DUP_ENTRY / 1062)
+      if (dbError.code === "ER_DUP_ENTRY" || dbError.errno === 1062) {
+        const msg = String(dbError.message || "").toLowerCase();
+        const errMap: Record<string, string> = {};
 
-    // 5. Generar código de verificación criptográfico (6 dígitos), hashearlo y enviarlo
-    await createAndSendVerificationCode(newUserId, cleanEmail, nombre.trim());
+        if (msg.includes("correo") || msg.includes("idx_usuarios_correo") || msg.includes("usuarios.correo")) {
+          errMap.correo = MENSAJES_VALIDACION.CORREO_DUPLICADO;
+        } else if (msg.includes("celular") || msg.includes("idx_usuarios_celular") || msg.includes("usuarios.celular")) {
+          errMap.celular = MENSAJES_VALIDACION.CELULAR_DUPLICADO;
+        } else {
+          errMap.correo = MENSAJES_VALIDACION.CORREO_DUPLICADO;
+        }
 
-    // 6. Configurar cookie temporal httpOnly para la pantalla de verificación
+        return NextResponse.json({ errores: errMap }, { status: 409 });
+      }
+
+      throw dbError;
+    }
+
+    // 6. Registrar consumo de cuota de IP en el Rate Limiter
+    registrarIntentoRegistroIp(ip);
+
+    // 7. Generar código de verificación criptográfico (6 dígitos) y enviarlo
+    await createAndSendVerificationCode(newUserId, correo, nombre);
+
+    // 8. Configurar cookie temporal httpOnly para la pantalla de verificación
     const response = NextResponse.json(
       {
         success: true,
@@ -166,17 +163,17 @@ export async function POST(req: NextRequest) {
       name: PENDING_COOKIE_NAME,
       value: encodePendingUser({
         userId: newUserId,
-        correo: cleanEmail,
-        nombre: nombre.trim(),
-        apellido: apellido.trim(),
-        celular: cleanPhone,
+        correo,
+        nombre,
+        apellido,
+        celular,
         lastSentAt: Date.now(),
       }),
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       sameSite: "lax",
       path: "/",
-      maxAge: 60 * 60, // 1 hora de validez
+      maxAge: 60 * 60, // 1 hora
     });
 
     return response;
@@ -184,8 +181,10 @@ export async function POST(req: NextRequest) {
     console.error("[API REGISTRO ERROR]:", error);
     return NextResponse.json(
       {
-        error:
-          "Error al conectar con la base de datos MySQL en XAMPP. Asegúrate de que MySQL esté iniciado en el panel de XAMPP.",
+        errores: {
+          general:
+            "Error al conectar con la base de datos MySQL en XAMPP. Asegúrate de que MySQL esté activo en el panel de XAMPP.",
+        },
         details: error.message,
       },
       { status: 500 }

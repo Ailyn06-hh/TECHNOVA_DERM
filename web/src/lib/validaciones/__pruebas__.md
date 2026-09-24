@@ -127,11 +127,56 @@ Contexto de prueba: `{ nombre: "Ana", apellido: "López", correo: "ana.lopez@dom
 
 ---
 
-## 3. Matriz de Integración en Pantallas
+## 3. Reglas de Validación de Registro — Parte 2 (`registro.ts`)
 
-| Pantalla / Endpoint | Normalización Aplicada | Validación de Contraseña | Componente UI |
+### 3.1 Nombre y Apellido
+- **Obligatorios**: Cadena no vacía tras normalizar.
+- **Rango**: Entre 2 y 50 caracteres.
+- **Caracteres permitidos**: Letras (incluyendo mayúsculas/minúsculas, acentos `áéíóúÁÉÍÓÚ`, eñe `ñÑ`, diéresis `üÜ`), espacios (` `), apóstrofe (`'`) y guion (`-`).
+- **No solo símbolos ni espacios**: Debe contener obligatoriamente letras.
+
+| Entrada | ¿Válido? | Motivo / Error |
+| :--- | :--- | :--- |
+| `"María José"` | **Pasa** | Caracteres válidos con acento y espacio |
+| `"O'Connor"` | **Pasa** | Apóstrofo válido |
+| `"Jean-Luc"` | **Pasa** | Guion válido |
+| `"Ñandú"` | **Pasa** | Eñe y acento válidos |
+| `"Güero"` | **Pasa** | Diéresis válida |
+| `"---"` o `"' - '"` | **Falla** | No puede consistir únicamente de espacios o símbolos |
+| `"Ana123"` | **Falla** | No se permiten números en el nombre |
+| `"A"` | **Falla** | Menor a 2 caracteres |
+| `'A'.repeat(51)` | **Falla** | Mayor a 50 caracteres |
+
+### 3.2 Correo Electrónico
+- **Obligatorio**: Formato válido `local@dominio.ext`.
+- **Longitud máxima**: 254 caracteres.
+- **Normalización**: Siempre en minúsculas y sin espacios.
+- **Unicidad**: Si ya existe en base de datos, error `"Este correo ya tiene una cuenta"` con enlace a `/login`.
+
+### 3.3 Teléfono Celular
+- **Obligatorio**: Exactamente 10 dígitos locales.
+- **Normalización**: Quita formato, símbolos y prefijos `+52` o `52`.
+- **Unicidad**: Si ya existe en base de datos, error `"Este celular ya está registrado"`.
+
+### 3.4 Términos y Promociones
+- `acepta_terminos`: Obligatorio (`true`).
+- `acepta_promociones`: Opcional (`boolean`).
+
+### 3.5 Servidor (Seguridad y Resiliencia)
+- **Campos desconocidos**: Rechaza payloads con propiedades adicionales no autorizadas con error 400.
+- **Tipos de datos**: Rechaza tipos incorrectos (`typeof` estricto) con error 400.
+- **Formato de respuesta**: Responde siempre con errores por campo en `{ errores: { campo: mensaje } }`.
+- **Concurrencia (Race Condition)**: Captura `ER_DUP_ENTRY` (código 1062) de MySQL en caso de registros simultáneos y lo traduce al mensaje específico del campo en conflicto.
+- **Rate Limiting**: Máximo 5 registros por IP por hora (HTTP 429 con cabecera `Retry-After`).
+
+---
+
+## 4. Matriz de Integración en Pantallas
+
+| Pantalla / Endpoint | Normalización Aplicada | Validación de Contraseña | Comportamiento UI / Servidor |
 | :--- | :--- | :--- | :--- |
-| `/registro` & `POST /api/auth/registro` | `normalizarTexto`, `normalizarCorreo`, `normalizarCelular` | `validarContrasena` (con contexto personal) | `<PasswordRequirements />` en vivo al enfocar o escribir |
+| `/registro` | `normalizarTexto`, `normalizarCorreo`, `normalizarCelular` | `validarContrasena` (con nombre, apellido y correo) | Valida en `blur`. Si tiene error, revalida en `change`. Al enviar, foco al primer error. Enlace a `/login` si correo duplicado. |
+| `POST /api/auth/registro` | `validarRegistro` estricto | `validarContrasena` | Valida tipos, campos desconocidos, unicidad en BD, captura `ER_DUP_ENTRY`, Rate limit 5/IP/hora. Retorna `{ errores }`. |
 | `/recuperar/nueva` & `POST /api/auth/recuperar/nueva` | Token sanitizado | `validarContrasena`, `validarConfirmacion`, `bcrypt.compare` (diferente a la actual) | `<PasswordRequirements />` en vivo al enfocar o escribir |
 | `/login` & `POST /api/auth/login` | `normalizarIdentificador` (correo o celular) | Comparación con hash de base de datos | Input con toggler show/hide |
 | `/recuperar` & `POST /api/auth/recuperar` | `normalizarIdentificador` | No aplica | Anti-enumeración y Rate-limit 3 req/15 min |
