@@ -40,7 +40,7 @@ export async function POST(req: NextRequest) {
     }
 
     // 3. Invalidar anteriores, generar nuevo código crypto de 6 dígitos, hashearlo y enviarlo
-    const { success } = await createAndSendVerificationCode(
+    const { success, devCode } = await createAndSendVerificationCode(
       pendingUser.userId,
       pendingUser.correo,
       pendingUser.nombre
@@ -50,6 +50,7 @@ export async function POST(req: NextRequest) {
     const updatedUser = {
       ...pendingUser,
       lastSentAt: now,
+      devCode,
     };
 
     const response = NextResponse.json(
@@ -57,6 +58,7 @@ export async function POST(req: NextRequest) {
         success: true,
         message: "Hemos enviado un nuevo código a tu correo electrónico.",
         correo: pendingUser.correo,
+        devCode,
       },
       { status: 200 }
     );

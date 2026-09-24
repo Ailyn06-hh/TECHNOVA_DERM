@@ -146,7 +146,7 @@ export async function POST(req: NextRequest) {
     registrarIntentoRegistroIp(ip);
 
     // 7. Generar código de verificación criptográfico (6 dígitos) y enviarlo
-    await createAndSendVerificationCode(newUserId, correo, nombre);
+    const { devCode } = await createAndSendVerificationCode(newUserId, correo, nombre);
 
     // 8. Configurar cookie temporal httpOnly para la pantalla de verificación
     const response = NextResponse.json(
@@ -155,6 +155,7 @@ export async function POST(req: NextRequest) {
         message: "Cuenta creada exitosamente. Te enviamos un código de verificación.",
         userId: newUserId,
         redirectUrl: "/verificar",
+        devCode,
       },
       { status: 201 }
     );
@@ -168,6 +169,7 @@ export async function POST(req: NextRequest) {
         apellido,
         celular,
         lastSentAt: Date.now(),
+        devCode,
       }),
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",

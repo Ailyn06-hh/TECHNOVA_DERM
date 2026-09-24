@@ -22,6 +22,7 @@ export default function VerifyForm({ initialEmail = "" }: VerifyFormProps) {
   const [hasError, setHasError] = useState(false);
   const [initialSeconds, setInitialSeconds] = useState(45);
   const [isSessionChecked, setIsSessionChecked] = useState(false);
+  const [devCode, setDevCode] = useState<string | null>(null);
 
   // 1. Obtener la información del usuario pendiente desde la cookie httpOnly del servidor
   useEffect(() => {
@@ -32,6 +33,9 @@ export default function VerifyForm({ initialEmail = "" }: VerifyFormProps) {
 
         if (res.ok && data.pending) {
           setEmail(data.correo);
+          if (data.devCode) {
+            setDevCode(data.devCode);
+          }
 
           // Calcular segundos restantes si se envió recientemente
           if (data.lastSentAt) {
@@ -80,6 +84,9 @@ export default function VerifyForm({ initialEmail = "" }: VerifyFormProps) {
       }
 
       setSuccessBanner("Hemos enviado un nuevo código a tu correo electrónico.");
+      if (data.devCode) {
+        setDevCode(data.devCode);
+      }
       // Limpiar casillas tras reenvío
       setCodeDigits(["", "", "", "", "", ""]);
       setTimeout(() => setSuccessBanner(null), 5000);
@@ -221,6 +228,30 @@ export default function VerifyForm({ initialEmail = "" }: VerifyFormProps) {
         <div className="pt-1">
           <ResendTimer initialSeconds={initialSeconds} onResend={handleResend} />
         </div>
+
+        {/* Banner de ayuda en Modo Desarrollo cuando SMTP no está configurado */}
+        {devCode && (
+          <div className="p-3.5 bg-amber-50/90 border border-amber-200/90 rounded-2xl text-xs text-amber-900 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 animate-fade-in">
+            <div>
+              <p className="font-semibold text-amber-800 text-[11px] uppercase tracking-wider">
+                Modo Local (Sin SMTP configurado)
+              </p>
+              <p className="mt-0.5">
+                Código generado:{" "}
+                <span className="font-mono font-bold text-sm tracking-widest text-[#6B1F4A]">
+                  {devCode}
+                </span>
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => handleCodeChange(devCode.split("").slice(0, 6))}
+              className="self-start sm:self-auto text-[11px] font-semibold bg-[#6B1F4A] hover:bg-[#58183D] text-white px-3 py-1.5 rounded-full transition shadow-2xs"
+            >
+              Autorellenar
+            </button>
+          </div>
+        )}
 
         {/* ¿Escribiste mal tu correo? Cambiarlo */}
         <div className="text-center pt-2">

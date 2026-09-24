@@ -17,6 +17,7 @@ export async function GET(req: NextRequest) {
       apellido: pendingUser.apellido,
       celular: pendingUser.celular,
       lastSentAt: pendingUser.lastSentAt,
+      devCode: pendingUser.devCode,
     });
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });

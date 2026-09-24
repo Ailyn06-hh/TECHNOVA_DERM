@@ -10,6 +10,7 @@ export interface PendingVerificationUser {
   apellido: string;
   celular: string;
   lastSentAt: number; // timestamp en ms
+  devCode?: string;
 }
 
 export const PENDING_COOKIE_NAME = "pending_verification";
@@ -50,7 +51,7 @@ export async function createAndSendVerificationCode(
   userId: number,
   correo: string,
   nombre: string
-): Promise<{ code: string; success: boolean }> {
+): Promise<{ code: string; success: boolean; devCode?: string }> {
   const pool = getDbPool();
   const rawCode = generateSecureCode();
   const codeHash = await bcrypt.hash(rawCode, 10);
@@ -76,5 +77,13 @@ export async function createAndSendVerificationCode(
     nombre,
   });
 
-  return { code: rawCode, success: mailResult.success };
+  const isSmtpConfigured = Boolean(
+    process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS
+  );
+
+  return {
+    code: rawCode,
+    success: mailResult.success,
+    devCode: !isSmtpConfigured ? rawCode : undefined,
+  };
 }
