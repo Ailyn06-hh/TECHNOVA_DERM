@@ -1,6 +1,7 @@
 /**
  * Rate Limiter en memoria con ventana deslizante (Sliding Window)
- * Límite configurado: máximo 5 registros por IP cada hora
+ * - Registro: máximo 5 registros por IP cada hora
+ * - Recuperación: máximo 10 solicitudes por IP cada hora
  */
 
 import { NextRequest } from "next/server";
@@ -9,11 +10,13 @@ interface RegistroIntento {
   timestamps: number[];
 }
 
-// Mapa en memoria para tracking por IP
+// Mapas en memoria para tracking por IP
 const registroIpMap = new Map<string, RegistroIntento>();
+const recuperarIpMap = new Map<string, RegistroIntento>();
 
 const VENTANA_MS = 60 * 60 * 1000; // 1 hora
 const MAX_REGISTROS_POR_HORA = 5;
+const MAX_RECUPERACIONES_POR_HORA = 10;
 
 /**
  * Extrae la IP del cliente a partir de cabeceras de proxy o conexión
@@ -76,8 +79,33 @@ export function registrarIntentoRegistroIp(ip: string): void {
 }
 
 /**
+ * Verifica si la IP ha superado el límite de 10 solicitudes de recuperación por hora
+ */
+export function verificarLimiteRecuperarIp(ip: string): boolean {
+  const ahora = Date.now();
+  const limiteInferior = ahora - VENTANA_MS;
+
+  const data = recuperarIpMap.get(ip);
+  if (!data) return true;
+
+  data.timestamps = data.timestamps.filter((ts) => ts > limiteInferior);
+  return data.timestamps.length < MAX_RECUPERACIONES_POR_HORA;
+}
+
+/**
+ * Registra un intento de solicitud de recuperación por IP
+ */
+export function registrarIntentoRecuperarIp(ip: string): void {
+  const ahora = Date.now();
+  const data = recuperarIpMap.get(ip) || { timestamps: [] };
+  data.timestamps.push(ahora);
+  recuperarIpMap.set(ip, data);
+}
+
+/**
  * Función para resetear en entornos de pruebas
  */
 export function _resetearRateLimiter(): void {
   registroIpMap.clear();
+  recuperarIpMap.clear();
 }

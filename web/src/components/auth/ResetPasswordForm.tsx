@@ -15,6 +15,8 @@ interface ResetPasswordFormProps {
   token: string;
 }
 
+const MENSAJE_TOKEN_INVALIDO = "Este enlace ya no es válido. Solicita uno nuevo.";
+
 export default function ResetPasswordForm({ token }: ResetPasswordFormProps) {
   const router = useRouter();
 
@@ -39,8 +41,10 @@ export default function ResetPasswordForm({ token }: ResetPasswordFormProps) {
   // 1. Validar token con el servidor al cargar la página
   useEffect(() => {
     async function validateToken() {
-      if (!token) {
-        setTokenError("No se proporcionó ningún token de recuperación.");
+      // Validación previa de formato: 64 caracteres hexadecimales
+      const tokenRegex = /^[0-9a-fA-F]{64}$/;
+      if (!token || !tokenRegex.test(token)) {
+        setTokenError(MENSAJE_TOKEN_INVALIDO);
         setIsValidatingToken(false);
         return;
       }
@@ -50,9 +54,7 @@ export default function ResetPasswordForm({ token }: ResetPasswordFormProps) {
         const data = await res.json();
 
         if (!res.ok || !data.valid) {
-          setTokenError(
-            data.error || "Este enlace de recuperación no es válido o ya ha expirado (vigencia de 30 minutos)."
-          );
+          setTokenError(data.error || MENSAJE_TOKEN_INVALIDO);
         } else {
           setUserContext({
             nombre: data.nombre,
@@ -75,28 +77,57 @@ export default function ResetPasswordForm({ token }: ResetPasswordFormProps) {
     return validarContrasena(password, userContext);
   }, [password, userContext]);
 
-  const validateClient = () => {
+  // Validación de campo individual
+  const validateField = (fieldName: "password" | "confirmPassword") => {
+    if (fieldName === "password") {
+      const passRes = validarContrasena(password, userContext);
+      return passRes.valida
+        ? null
+        : passRes.errores[0] || MENSAJES_VALIDACION.CONTRASENA_NO_CUMPLE_REQUISITOS;
+    }
+    if (fieldName === "confirmPassword") {
+      const confirmRes = validarConfirmacion(password, confirmPassword);
+      return confirmRes.valida ? null : confirmRes.error;
+    }
+    return null;
+  };
+
+  const handleBlur = (fieldName: "password" | "confirmPassword") => {
+    if (fieldName === "password") {
+      setIsPasswordFocused(false);
+    }
+    const err = validateField(fieldName);
+    if (err) {
+      setErrors((prev) => ({ ...prev, [fieldName]: err }));
+    } else {
+      setErrors((prev) => ({ ...prev, [fieldName]: undefined }));
+    }
+  };
+
+  const validateAll = () => {
     const errs: { password?: string; confirmPassword?: string } = {};
 
-    const passRes = validarContrasena(password, userContext);
-    if (!passRes.valida) {
-      errs.password =
-        passRes.errores[0] || MENSAJES_VALIDACION.CONTRASENA_NO_CUMPLE_REQUISITOS;
-    }
+    const passErr = validateField("password");
+    if (passErr) errs.password = passErr;
 
-    const confirmRes = validarConfirmacion(password, confirmPassword);
-    if (!confirmRes.valida) {
-      errs.confirmPassword = confirmRes.error;
-    }
+    const confirmErr = validateField("confirmPassword");
+    if (confirmErr) errs.confirmPassword = confirmErr;
 
     setErrors(errs);
+
+    if (errs.password) {
+      document.getElementById("new-password")?.focus();
+    } else if (errs.confirmPassword) {
+      document.getElementById("confirm-password")?.focus();
+    }
+
     return Object.keys(errs).length === 0;
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!validateClient() || isSubmitting) return;
+    if (!validateAll() || isSubmitting) return;
 
     try {
       setIsSubmitting(true);
@@ -115,10 +146,18 @@ export default function ResetPasswordForm({ token }: ResetPasswordFormProps) {
       const data = await res.json();
 
       if (!res.ok) {
+        // Si el token expiró o ya no es válido mientras el usuario estaba en la página
+        if (data.invalidToken) {
+          setTokenError(data.error || MENSAJE_TOKEN_INVALIDO);
+          return;
+        }
+
         if (data.field === "password") {
           setErrors((prev) => ({ ...prev, password: data.error }));
+          document.getElementById("new-password")?.focus();
         } else if (data.field === "confirmPassword") {
           setErrors((prev) => ({ ...prev, confirmPassword: data.error }));
+          document.getElementById("confirm-password")?.focus();
         } else {
           setGeneralError(data.error || "Error al actualizar la contraseña.");
         }
@@ -144,7 +183,7 @@ export default function ResetPasswordForm({ token }: ResetPasswordFormProps) {
     );
   }
 
-  // Estado: Token inválido, expirado o ya usado
+  // Estado: Token inválido, expirado o ya usado (mensaje unificado)
   if (tokenError) {
     return (
       <div className="w-full max-w-[420px] mx-auto py-8">
@@ -214,12 +253,18 @@ export default function ResetPasswordForm({ token }: ResetPasswordFormProps) {
               autoComplete="new-password"
               value={password}
               onChange={(e) => {
-                setPassword(e.target.value);
-                if (errors.password) setErrors((prev) => ({ ...prev, password: undefined }));
+                const val = e.target.value;
+                setPassword(val);
+                if (errors.password) {
+                  const passRes = validarContrasena(val, userContext);
+                  if (passRes.valida) {
+                    setErrors((prev) => ({ ...prev, password: undefined }));
+                  }
+                }
                 if (generalError) setGeneralError(null);
               }}
               onFocus={() => setIsPasswordFocused(true)}
-              onBlur={() => setIsPasswordFocused(false)}
+              onBlur={() => handleBlur("password")}
               placeholder="••••••••••"
               aria-invalid={!!errors.password}
               aria-describedby="password-requirements password-error"
@@ -269,12 +314,17 @@ export default function ResetPasswordForm({ token }: ResetPasswordFormProps) {
               autoComplete="new-password"
               value={confirmPassword}
               onChange={(e) => {
-                setConfirmPassword(e.target.value);
+                const val = e.target.value;
+                setConfirmPassword(val);
                 if (errors.confirmPassword) {
-                  setErrors((prev) => ({ ...prev, confirmPassword: undefined }));
+                  const confirmRes = validarConfirmacion(password, val);
+                  if (confirmRes.valida) {
+                    setErrors((prev) => ({ ...prev, confirmPassword: undefined }));
+                  }
                 }
                 if (generalError) setGeneralError(null);
               }}
+              onBlur={() => handleBlur("confirmPassword")}
               placeholder="••••••••••"
               aria-invalid={!!errors.confirmPassword}
               aria-describedby={errors.confirmPassword ? "confirm-error" : undefined}

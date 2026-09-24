@@ -4,14 +4,18 @@ import { getDbPool } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
 
+const TOKEN_HEX_REGEX = /^[0-9a-fA-F]{64}$/;
+const MENSAJE_TOKEN_INVALIDO = "Este enlace ya no es válido. Solicita uno nuevo.";
+
 export async function GET(req: NextRequest) {
   try {
     const { searchParams } = new URL(req.url);
     const token = searchParams.get("token");
 
-    if (!token || typeof token !== "string" || token.length < 32) {
+    // 1. Validar formato antes de consultar la base de datos: exactamente 64 caracteres hexadecimales
+    if (!token || typeof token !== "string" || !TOKEN_HEX_REGEX.test(token)) {
       return NextResponse.json(
-        { valid: false, error: "El token es inválido o no fue proporcionado." },
+        { valid: false, error: MENSAJE_TOKEN_INVALIDO },
         { status: 400 }
       );
     }
@@ -29,11 +33,12 @@ export async function GET(req: NextRequest) {
       [tokenHash]
     );
 
+    // 2. Debe existir y no estar usado
     if (!rows || rows.length === 0) {
       return NextResponse.json(
         {
           valid: false,
-          error: "Este enlace de recuperación es inválido o ya ha sido utilizado.",
+          error: MENSAJE_TOKEN_INVALIDO,
         },
         { status: 404 }
       );
@@ -43,8 +48,8 @@ export async function GET(req: NextRequest) {
     const now = new Date();
     const expiresAt = new Date(record.expira_en);
 
+    // 3. No haber expirado
     if (now > expiresAt) {
-      // Marcar expirado como usado para limpieza
       await pool.execute(
         "UPDATE restablecimientos_password SET usado = 1 WHERE id = ?",
         [record.id]
@@ -52,12 +57,13 @@ export async function GET(req: NextRequest) {
       return NextResponse.json(
         {
           valid: false,
-          error: "El enlace de recuperación ha expirado (vigencia de 30 minutos).",
+          error: MENSAJE_TOKEN_INVALIDO,
         },
         { status: 410 }
       );
     }
 
+    // Token válido: retorna datos necesarios para el validador de contraseña en el cliente
     return NextResponse.json(
       {
         valid: true,
@@ -70,7 +76,7 @@ export async function GET(req: NextRequest) {
   } catch (error: any) {
     console.error("[API VALIDAR TOKEN ERROR]:", error);
     return NextResponse.json(
-      { valid: false, error: "Error interno al validar el token." },
+      { valid: false, error: MENSAJE_TOKEN_INVALIDO },
       { status: 500 }
     );
   }
