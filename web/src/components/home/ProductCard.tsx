@@ -111,12 +111,12 @@ export default function ProductCard({
 
             {rightBadge && (
               <span
-                className={`text-[10px] font-medium px-2 py-0.5 rounded-full ${
-                  rightBadge.includes("Última")
-                    ? "bg-amber-100 text-amber-900 border border-amber-200"
-                    : rightBadge.includes("Quedan")
-                    ? "bg-[#FEF9EE] text-[#8C6D23] border border-[#F3E3B6]"
-                    : "bg-[#F3E1E4] text-[#6B1F4A]"
+                className={`text-[10px] font-medium px-2 py-0.5 rounded-full border ${
+                  rightBadge.includes("Última") || rightBadge.includes("Quedan")
+                    ? "bg-amber-50 text-amber-800 border-amber-200"
+                    : rightBadge === "Nuevo"
+                    ? "bg-emerald-50 text-emerald-800 border-emerald-200"
+                    : "bg-rose-50 text-[#6B1F4A] border-rose-100"
                 }`}
               >
                 {rightBadge}
