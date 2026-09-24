@@ -190,15 +190,8 @@ export async function POST(req: NextRequest) {
       [norm.valor, ip]
     );
 
-    // 9. Verificar estado del perfil de piel (Onboarding)
-    const [profileRows]: any = await pool.execute(
-      "SELECT id FROM perfiles_piel WHERE usuario_id = ? LIMIT 1",
-      [user.id]
-    );
-
-    const hasProfile = Boolean(profileRows && profileRows.length > 0);
-    const onboardingSkipped = Boolean(user.onboarding_omitido);
-    const redirectUrl = !hasProfile && !onboardingSkipped ? "/onboarding/perfil" : "/";
+    // 9. Redirigir a /onboarding/perfil al iniciar sesión
+    const redirectUrl = "/onboarding/perfil";
 
     const response = NextResponse.json(
       {

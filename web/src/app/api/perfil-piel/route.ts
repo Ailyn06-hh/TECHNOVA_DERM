@@ -171,7 +171,7 @@ export async function PUT(req: NextRequest) {
       {
         success: true,
         message: "Tu perfil de piel fue guardado exitosamente.",
-        redirectUrl: "/onboarding/rutina",
+        redirectUrl: "/",
       },
       { status: 200 }
     );

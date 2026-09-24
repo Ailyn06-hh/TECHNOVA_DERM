@@ -15,6 +15,7 @@ export default function StorePage() {
 
   const categories = ["Todos", "Serum", "Protector Solar", "Limpiador", "Hidratante", "Exfoliante"];
 
+  // TODO: Mostrar recomendaciones personalizadas de productos según el perfil de piel del usuario
   const loadCatalog = async () => {
     try {
       setLoading(true);
