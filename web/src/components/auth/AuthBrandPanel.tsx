@@ -1,6 +1,7 @@
 import React from "react";
 import Link from "next/link";
 import { Check } from "lucide-react";
+import { NOMBRE_MARCA } from "@/lib/marca";
 
 export default function AuthBrandPanel() {
   const benefits = [
@@ -15,7 +16,7 @@ export default function AuthBrandPanel() {
       <div>
         <Link href="/" className="inline-block group focus:outline-none focus:ring-2 focus:ring-white/40 rounded-lg">
           <span className="font-serif text-2xl sm:text-3xl font-bold tracking-tight text-white hover:text-white/90 transition">
-            Technova-Derm
+            {NOMBRE_MARCA}
           </span>
         </Link>
 
@@ -97,7 +98,7 @@ export default function AuthBrandPanel() {
 
       {/* Footer copyright */}
       <div className="pt-8 sm:pt-12 text-[11px] sm:text-xs text-white/50 font-light">
-        <p>© Technova-Derm</p>
+        <p>© {NOMBRE_MARCA}</p>
       </div>
     </aside>
   );

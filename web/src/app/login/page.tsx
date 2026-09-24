@@ -2,10 +2,11 @@ import React, { Suspense } from "react";
 import type { Metadata } from "next";
 import AuthBrandPanel from "@/components/auth/AuthBrandPanel";
 import LoginForm from "@/components/auth/LoginForm";
+import { NOMBRE_MARCA } from "@/lib/marca";
 
 export const metadata: Metadata = {
-  title: "Inicia Sesión | Technova-Derm",
-  description: "Accede a tu cuenta de Technova-Derm para sincronizar tu carrito y tus pedidos en la web, la app y la tienda física.",
+  title: `Inicia Sesión · ${NOMBRE_MARCA}`,
+  description: `Accede a tu cuenta de ${NOMBRE_MARCA} para sincronizar tu carrito y tus pedidos en la web, la app y la tienda física.`,
 };
 
 export default function LoginPage() {

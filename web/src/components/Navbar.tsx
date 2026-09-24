@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Sparkles, ShoppingBag, Store, LineChart, ShieldCheck } from "lucide-react";
+import { NOMBRE_MARCA } from "@/lib/marca";
 
 export default function Navbar() {
   const pathname = usePathname();
@@ -33,11 +34,11 @@ export default function Navbar() {
           {/* Logo & Brand */}
           <Link href="/" className="flex items-center gap-2 group">
             <div className="w-9 h-9 rounded-full bg-nacar-800 text-white flex items-center justify-center font-serif text-lg tracking-wider shadow-sm group-hover:bg-nacar-700 transition">
-              N
+              T
             </div>
             <div>
               <div className="flex items-center gap-1.5">
-                <span className="font-serif text-xl tracking-tight text-nacar-900 font-medium">NÁCAR</span>
+                <span className="font-serif text-xl tracking-tight text-nacar-900 font-medium">{NOMBRE_MARCA}</span>
                 <span className="text-[10px] uppercase tracking-widest px-1.5 py-0.5 rounded bg-nacar-200 text-nacar-800 font-semibold">
                   SkinHub
                 </span>

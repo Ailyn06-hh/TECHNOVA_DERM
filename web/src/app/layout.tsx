@@ -3,6 +3,7 @@ import { DM_Serif_Display, Inter } from "next/font/google";
 import "./globals.css";
 import Navbar from "@/components/Navbar";
 import Footer from "@/components/Footer";
+import { NOMBRE_MARCA, LEMA } from "@/lib/marca";
 
 const serifFont = DM_Serif_Display({
   weight: "400",
@@ -18,8 +19,8 @@ const sansFont = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "Technova-Derm | E-Business Omnicanal & Skincare Inteligente",
-  description: "Plataforma de E-Business omnicanal con predicción de stock por Machine Learning y motor de Dynamic Pricing para MiPyMEs cosméticas - HackaTec 2026",
+  title: `Inicio · ${NOMBRE_MARCA}`,
+  description: LEMA,
 };
 
 export default function RootLayout({

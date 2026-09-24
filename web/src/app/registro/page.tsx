@@ -2,10 +2,11 @@ import React, { Suspense } from "react";
 import type { Metadata } from "next";
 import AuthBrandPanel from "@/components/auth/AuthBrandPanel";
 import RegisterForm from "@/components/auth/RegisterForm";
+import { NOMBRE_MARCA } from "@/lib/marca";
 
 export const metadata: Metadata = {
-  title: "Crea tu Cuenta | Technova-Derm",
-  description: "Crea tu cuenta única de Technova-Derm para disfrutar de compras omnicanal, carritos sincronizados y beneficios exclusivos.",
+  title: `Crea tu Cuenta · ${NOMBRE_MARCA}`,
+  description: `Crea tu cuenta única de ${NOMBRE_MARCA} para disfrutar de compras omnicanal, carritos sincronizados y beneficios exclusivos.`,
 };
 
 export default function RegisterPage() {

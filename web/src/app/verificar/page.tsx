@@ -4,10 +4,11 @@ import { cookies } from "next/headers";
 import AuthBrandPanel from "@/components/auth/AuthBrandPanel";
 import VerifyForm from "@/components/auth/VerifyForm";
 import { decodePendingUser, PENDING_COOKIE_NAME } from "@/lib/auth-verification";
+import { NOMBRE_MARCA } from "@/lib/marca";
 
 export const metadata: Metadata = {
-  title: "Verifica tu Cuenta | Technova-Derm",
-  description: "Ingresa el código de 6 dígitos que enviamos a tu correo para activar tu cuenta de Technova-Derm.",
+  title: `Verifica tu Cuenta · ${NOMBRE_MARCA}`,
+  description: `Ingresa el código de 6 dígitos que enviamos a tu correo para activar tu cuenta de ${NOMBRE_MARCA}.`,
 };
 
 export default function VerifyPage() {

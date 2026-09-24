@@ -2,10 +2,11 @@ import React, { Suspense } from "react";
 import type { Metadata } from "next";
 import AuthBrandPanel from "@/components/auth/AuthBrandPanel";
 import ResetPasswordForm from "@/components/auth/ResetPasswordForm";
+import { NOMBRE_MARCA } from "@/lib/marca";
 
 export const metadata: Metadata = {
-  title: "Crear Nueva Contraseña | Technova-Derm",
-  description: "Crea y confirma tu nueva contraseña para acceder a Technova-Derm.",
+  title: `Crear Nueva Contraseña · ${NOMBRE_MARCA}`,
+  description: `Crea y confirma tu nueva contraseña para acceder a ${NOMBRE_MARCA}.`,
 };
 
 interface NuevaPasswordPageProps {

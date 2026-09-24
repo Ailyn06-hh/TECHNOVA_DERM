@@ -4,9 +4,10 @@ import { redirect } from "next/navigation";
 import AuthBrandPanel from "@/components/auth/AuthBrandPanel";
 import SkinProfileForm from "@/components/onboarding/SkinProfileForm";
 import { getAuthUserServer } from "@/lib/session";
+import { NOMBRE_MARCA } from "@/lib/marca";
 
 export const metadata: Metadata = {
-  title: "Cuéntanos de tu Piel · Onboarding | Technova-Derm",
+  title: `Tu Perfil de Piel · ${NOMBRE_MARCA}`,
   description: "Personaliza tu rutina de skincare recomendada según tu tipo de piel, preocupaciones y presupuesto.",
 };
 

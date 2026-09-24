@@ -1,4 +1,5 @@
 import nodemailer from "nodemailer";
+import { NOMBRE_MARCA, LEMA } from "./marca";
 
 interface SendVerificationEmailOptions {
   to: string;
@@ -23,7 +24,7 @@ function getSmtpConfig() {
   const smtpPort = Number(process.env.SMTP_PORT) || 587;
   const smtpUser = process.env.SMTP_USER;
   const smtpPass = process.env.SMTP_PASS;
-  const mailFrom = process.env.MAIL_FROM || "Technova-Derm <no-reply@technovaderm.com>";
+  const mailFrom = process.env.MAIL_FROM || `${NOMBRE_MARCA} <no-reply@technovaderm.com>`;
   const isConfigured = Boolean(smtpHost && smtpUser && smtpPass);
 
   return { smtpHost, smtpPort, smtpUser, smtpPass, mailFrom, isConfigured };

@@ -2,9 +2,10 @@ import React, { Suspense } from "react";
 import type { Metadata } from "next";
 import AuthBrandPanel from "@/components/auth/AuthBrandPanel";
 import ForgotPasswordForm from "@/components/auth/ForgotPasswordForm";
+import { NOMBRE_MARCA } from "@/lib/marca";
 
 export const metadata: Metadata = {
-  title: "Recupera tu Contraseña | Technova-Derm",
+  title: `Recupera tu Contraseña · ${NOMBRE_MARCA}`,
   description: "Escribe tu correo o celular registrado para recibir un enlace seguro de restablecimiento de contraseña.",
 };
 
