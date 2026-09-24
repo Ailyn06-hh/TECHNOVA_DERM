@@ -1,8 +1,6 @@
 import type { Metadata } from "next";
 import { DM_Serif_Display, Inter } from "next/font/google";
 import "./globals.css";
-import Navbar from "@/components/Navbar";
-import Footer from "@/components/Footer";
 import { NOMBRE_MARCA, LEMA } from "@/lib/marca";
 
 const serifFont = DM_Serif_Display({
@@ -30,10 +28,8 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="es" className={`${serifFont.variable} ${sansFont.variable}`}>
-      <body className="min-h-screen bg-[#FAF7F5] flex flex-col font-sans antialiased text-nacar-dark">
-        <Navbar />
-        <main className="flex-1">{children}</main>
-        <Footer />
+      <body className="min-h-screen bg-[#F8F5F0] flex flex-col font-sans antialiased text-[#1A1715]">
+        {children}
       </body>
     </html>
   );

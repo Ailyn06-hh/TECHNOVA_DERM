@@ -5,6 +5,7 @@ import { encodePendingUser, PENDING_COOKIE_NAME } from "@/lib/auth-verification"
 import { setAuthSessionCookie } from "@/lib/session";
 import { normalizarIdentificador } from "@/lib/validaciones";
 import { obtenerIpCliente } from "@/lib/rate-limiter";
+import { fusionarCarritoInvitado } from "@/lib/carrito";
 
 // Hash ficticio precalculado con bcrypt cost factor 10 para mitigar timing attacks si el usuario no existe
 const DUMMY_HASH = "$2a$10$7EqJtq98hPqEX7fNZaFWoO0LqgP2Lw5jO8L7vC9GZJ1.M7n0O7A5m";
@@ -208,7 +209,19 @@ export async function POST(req: NextRequest) {
       { status: 200 }
     );
 
-    // 10. Configurar cookie de sesión:
+    // 10. Fusionar carrito de invitado con el del usuario si existe
+    const guestToken = req.cookies.get("token_invitado")?.value;
+    if (guestToken) {
+      await fusionarCarritoInvitado(user.id, guestToken);
+      response.cookies.set({
+        name: "token_invitado",
+        value: "",
+        maxAge: 0,
+        path: "/",
+      });
+    }
+
+    // 11. Configurar cookie de sesión:
     // - Recordarme sin marcar: máximo 12 horas
     // - Recordarme marcado: 30 días
     setAuthSessionCookie(
