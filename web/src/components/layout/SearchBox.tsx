@@ -103,7 +103,7 @@ export default function SearchBox() {
         router.push(`/producto/${selected.slug}`);
       } else if (query.trim().length > 0) {
         setIsOpen(false);
-        router.push(`/buscar?q=${encodeURIComponent(query.trim())}`);
+        router.push(`/catalogo?q=${encodeURIComponent(query.trim())}`);
       }
     } else if (e.key === "Escape") {
       setIsOpen(false);
