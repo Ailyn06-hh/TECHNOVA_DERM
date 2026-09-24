@@ -55,7 +55,7 @@ export async function getRecomendacionRutina(userId: number | null): Promise<Rec
     `SELECT DISTINCT pi.producto_id 
      FROM pedidos p 
      JOIN pedido_items pi ON pi.pedido_id = p.id 
-     WHERE p.usuario_id = ?`,
+     WHERE p.usuario_id = ? AND p.estado != 'borrador'`,
     [userId]
   );
   const purchasedIds = new Set<number>(orderRows.map((r: any) => Number(r.producto_id)));
@@ -541,7 +541,7 @@ export async function armarRutina(
           `SELECT DISTINCT pi.producto_id 
            FROM pedidos ped 
            JOIN pedido_items pi ON pi.pedido_id = ped.id 
-           WHERE ped.usuario_id = ?`,
+           WHERE ped.usuario_id = ? AND ped.estado != 'borrador'`,
           [userId]
         );
         purchasedIds = new Set<number>((orderRows || []).map((r: any) => Number(r.producto_id)));
@@ -1088,5 +1088,184 @@ export async function getSugerenciasCarrito(
 
   return sugerencias;
 }
+
+export interface SugerenciaRecompra {
+  productoId: number;
+  nombre: string;
+  slug: string;
+  precioOriginal: number;
+  precioVigente: number;
+  tienePrecioEspecial: boolean;
+  color_fondo: string;
+  color_frasco: string;
+  duracionDias: number;
+  diasDesdeCompra: number;
+  tiempoRelativo: string;
+}
+
+/**
+ * Formatea una fecha pasada en lenguaje natural con Intl.RelativeTimeFormat
+ * Ej. "hace 2 meses", "hace 3 semanas", "hace 5 días"
+ */
+export function formatearTiempoRelativo(fecha: Date): string {
+  const diffMs = Date.now() - fecha.getTime();
+  const diffDias = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+  const diffSemanas = Math.floor(diffDias / 7);
+  const diffMeses = Math.floor(diffDias / 30);
+  const diffAnios = Math.floor(diffDias / 365);
+
+  const rtf = new Intl.RelativeTimeFormat("es-MX", { numeric: "always" });
+
+  if (diffAnios >= 1) {
+    return rtf.format(-diffAnios, "year");
+  }
+  if (diffMeses >= 1) {
+    return rtf.format(-diffMeses, "month");
+  }
+  if (diffSemanas >= 1) {
+    return rtf.format(-diffSemanas, "week");
+  }
+  return rtf.format(-Math.max(1, diffDias), "day");
+}
+
+/**
+ * Sugerir producto para recompra inteligente para la pantalla de cuenta:
+ * - Candidatos: productos comprados en pedidos entregados con duracion_dias, activos y con stock
+ * - Ha transcurrido al menos el 80% de su duración estimada
+ * - No está en recompras_descartadas (hasta > NOW())
+ * - Prioridad: los que tienen precio especial, luego los más atrasados
+ */
+export async function sugerirRecompra(userId: number | null): Promise<SugerenciaRecompra | null> {
+  if (!userId) return null;
+
+  const pool = getDbPool();
+
+  const [rows]: any = await pool.execute(
+    `SELECT 
+      p.id as producto_id,
+      p.nombre,
+      p.slug,
+      p.precio,
+      p.precio_especial,
+      p.color_fondo,
+      p.color_frasco,
+      p.duracion_dias,
+      COALESCE(SUM(i.existencias), 0) as total_stock,
+      (
+        SELECT MAX(p2.creado_en)
+        FROM pedidos p2
+        JOIN pedido_items pi2 ON pi2.pedido_id = p2.id
+        WHERE p2.usuario_id = ?
+          AND pi2.producto_id = p.id
+          AND p2.estado NOT IN ('cancelado', 'expirado', 'pago_fallido', 'borrador')
+      ) as ultima_compra
+    FROM pedidos p_ped
+    JOIN pedido_items pi ON pi.pedido_id = p_ped.id
+    JOIN productos p ON p.id = pi.producto_id
+    LEFT JOIN inventario i ON i.producto_id = p.id
+    WHERE p_ped.usuario_id = ?
+      AND p_ped.estado = 'entregado'
+      AND p.activo = 1
+      AND p.duracion_dias IS NOT NULL
+      AND p.duracion_dias > 0
+      AND p.id NOT IN (
+        SELECT producto_id FROM recompras_descartadas 
+        WHERE usuario_id = ? AND hasta > NOW()
+      )
+    GROUP BY p.id
+    HAVING total_stock > 0`,
+    [userId, userId, userId]
+  );
+
+  if (!rows || rows.length === 0) return null;
+
+  const ahora = Date.now();
+  const candidatos: Array<{
+    producto: any;
+    diasDesdeCompra: number;
+    ratioAtraso: number;
+    tienePrecioEspecial: boolean;
+    ultimaCompraFecha: Date;
+  }> = [];
+
+  for (const r of rows) {
+    const duracion = Number(r.duracion_dias || 60);
+    const fechaCompra = new Date(r.ultima_compra);
+    const diasDesdeCompra = Math.max(0, Math.floor((ahora - fechaCompra.getTime()) / (1000 * 60 * 60 * 24)));
+
+    // Candidato si ya pasó al menos el 80% de su duración
+    if (diasDesdeCompra >= duracion * 0.8) {
+      const tienePrecioEspecial = Boolean(r.precio_especial && Number(r.precio_especial) < Number(r.precio));
+      const ratioAtraso = diasDesdeCompra / duracion;
+
+      candidatos.push({
+        producto: r,
+        diasDesdeCompra,
+        ratioAtraso,
+        tienePrecioEspecial,
+        ultimaCompraFecha: fechaCompra,
+      });
+    }
+  }
+
+  if (candidatos.length === 0) return null;
+
+  // Ordenar: primero los con precio especial, luego por ratio de atraso más alto
+  candidatos.sort((a, b) => {
+    if (a.tienePrecioEspecial !== b.tienePrecioEspecial) {
+      return a.tienePrecioEspecial ? -1 : 1;
+    }
+    return b.ratioAtraso - a.ratioAtraso;
+  });
+
+  const ganador = candidatos[0];
+  const prod = ganador.producto;
+  const precioOriginal = Number(prod.precio);
+  const precioVigente = Number(prod.precio_especial ?? prod.precio);
+
+  // Emitir notificación si no se ha notificado este producto en los últimos 30 días
+  // TODO: Programar ejecución periódica diaria mediante cron job / scheduler para todos los usuarios activos
+  try {
+    const enlaceProd = `/producto/${prod.slug}`;
+    const [prevRecompra]: any = await pool.execute(
+      `SELECT id FROM notificaciones 
+       WHERE usuario_id = ? 
+         AND tipo = 'recompra' 
+         AND evento = 'recompra_sugerida' 
+         AND enlace = ? 
+         AND creado_en > DATE_SUB(NOW(), INTERVAL 30 DAY)
+       LIMIT 1`,
+      [userId, enlaceProd]
+    );
+
+    if (!prevRecompra || prevRecompra.length === 0) {
+      const { notificar } = await import("./notificaciones");
+      await notificar(userId, {
+        tipo: "recompra",
+        evento: "recompra_sugerida",
+        titulo: `¿Se te está terminando el ${prod.nombre}?`,
+        mensaje: `Compraste ${formatearTiempoRelativo(ganador.ultimaCompraFecha)}. Pídelo de nuevo hoy con envío gratis o recógelo en tienda.`,
+        enlace: enlaceProd,
+      });
+    }
+  } catch (err: any) {
+    console.error("[sugerirRecompra notificar Error]:", err.message);
+  }
+
+  return {
+    productoId: Number(prod.producto_id),
+    nombre: prod.nombre,
+    slug: prod.slug,
+    precioOriginal,
+    precioVigente,
+    tienePrecioEspecial: ganador.tienePrecioEspecial,
+    color_fondo: prod.color_fondo || "#F6EAE2",
+    color_frasco: prod.color_frasco || "#FAF8F5",
+    duracionDias: Number(prod.duracion_dias),
+    diasDesdeCompra: ganador.diasDesdeCompra,
+    tiempoRelativo: formatearTiempoRelativo(ganador.ultimaCompraFecha),
+  };
+}
+
 
 

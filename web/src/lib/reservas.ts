@@ -1,4 +1,5 @@
 import { getDbPool } from "@/lib/db";
+import { regresarInventario } from "@/lib/inventario";
 
 /**
  * Libera las reservas de inventario de pedidos que hayan superado su tiempo límite.
@@ -43,25 +44,8 @@ export async function liberarReservasVencidas(): Promise<{ pedidosExpirados: num
     );
 
     for (const item of itemsToReturn || []) {
-      if (item.sucursal_id) {
-        await conn.execute(
-          `UPDATE inventario 
-           SET existencias = existencias + ? 
-           WHERE producto_id = ? AND sucursal_id = ? 
-           LIMIT 1`,
-          [item.cantidad, item.producto_id, item.sucursal_id]
-        );
-      } else {
-        // Si no tenía sucursal asignada (ej. envío central), reponer en la sucursal 1 (Centro)
-        await conn.execute(
-          `UPDATE inventario 
-           SET existencias = existencias + ? 
-           WHERE producto_id = ? 
-           ORDER BY existencias ASC 
-           LIMIT 1`,
-          [item.cantidad, item.producto_id]
-        );
-      }
+      const sucursalDestino = item.sucursal_id || 1;
+      await regresarInventario(conn, item.producto_id, sucursalDestino, item.cantidad);
     }
 
     // 3. Actualizar estado de los pedidos a 'expirado' y registrar evento

@@ -122,6 +122,40 @@ export async function POST(req: NextRequest) {
       );
 
       newUserId = insertResult.insertId;
+
+      // Crear preferencias de notificación por defecto
+      const promoActivo = acepta_promociones ? 1 : 0;
+      await pool.execute(
+        `INSERT INTO preferencias_notificacion (usuario_id, categoria, canal, activo) VALUES
+         (?, 'pedidos', 'push', 1),
+         (?, 'pedidos', 'whatsapp', 1),
+         (?, 'pedidos', 'correo', 1),
+         (?, 'recompras', 'push', 1),
+         (?, 'recompras', 'whatsapp', 1),
+         (?, 'recompras', 'correo', 0),
+         (?, 'favoritos', 'push', 1),
+         (?, 'favoritos', 'whatsapp', 0),
+         (?, 'favoritos', 'correo', 0),
+         (?, 'promociones', 'push', 0),
+         (?, 'promociones', 'whatsapp', ?),
+         (?, 'promociones', 'correo', ?)`,
+        [
+          newUserId,
+          newUserId,
+          newUserId,
+          newUserId,
+          newUserId,
+          newUserId,
+          newUserId,
+          newUserId,
+          newUserId,
+          newUserId,
+          newUserId,
+          promoActivo,
+          newUserId,
+          promoActivo,
+        ]
+      );
     } catch (dbError: any) {
       // Capturar colisión concurrente mediante los índices UNIQUE de MySQL (ER_DUP_ENTRY / 1062)
       if (dbError.code === "ER_DUP_ENTRY" || dbError.errno === 1062) {

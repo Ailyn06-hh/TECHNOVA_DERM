@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { Shield, CreditCard, Lock } from "lucide-react";
 import { tokenizarTarjeta } from "@/lib/pagos/tokenizar";
 
@@ -27,6 +27,15 @@ export default function NewCardForm({ onChange }: NewCardFormProps) {
   const [cvv, setCvv] = useState("");
   const [guardar, setGuardar] = useState(true);
 
+  // Guardar ref del callback para evitar bucles si la referencia de onChange cambia en el padre
+  const onChangeRef = useRef(onChange);
+  useEffect(() => {
+    onChangeRef.current = onChange;
+  }, [onChange]);
+
+  // Evitar re-tokenizar si los datos ingresados no han cambiado
+  const lastInputKeyRef = useRef<string | null>(null);
+
   // Formatear número de tarjeta con espacios cada 4 dígitos
   const handleNumberChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const raw = e.target.value.replace(/\D/g, "").slice(0, 16);
@@ -41,6 +50,12 @@ export default function NewCardForm({ onChange }: NewCardFormProps) {
     const isCvvValid = cvv.length >= 3;
 
     if (isNumberValid && isTitularValid && isCvvValid) {
+      const inputKey = `${rawNumber}|${titular.trim()}|${mes}|${anio}|${cvv}|${guardar}`;
+      if (lastInputKeyRef.current === inputKey) {
+        return; // Evita el bucle infinito si ya se tokenizó para este mismo estado
+      }
+      lastInputKeyRef.current = inputKey;
+
       tokenizarTarjeta({
         numero: rawNumber,
         titular,
@@ -48,7 +63,7 @@ export default function NewCardForm({ onChange }: NewCardFormProps) {
         anio: Number(anio),
         cvv,
       }).then((tok) => {
-        onChange({
+        onChangeRef.current({
           token: tok.token,
           ultimos4: tok.ultimos4,
           marca: tok.marca,
@@ -60,9 +75,12 @@ export default function NewCardForm({ onChange }: NewCardFormProps) {
         });
       });
     } else {
-      onChange(null);
+      if (lastInputKeyRef.current !== null) {
+        lastInputKeyRef.current = null;
+        onChangeRef.current(null);
+      }
     }
-  }, [numero, titular, mes, anio, cvv, guardar, onChange]);
+  }, [numero, titular, mes, anio, cvv, guardar]);
 
   const currentYear = new Date().getFullYear();
   const years = Array.from({ length: 12 }, (_, i) => currentYear + i);

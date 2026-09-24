@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from "react";
+import Link from "next/link";
 import { Bell, Check, Loader2 } from "lucide-react";
 
 interface NotificationItem {
@@ -39,6 +40,17 @@ export default function NotificationsMenu() {
 
   useEffect(() => {
     fetchNotifications();
+
+    const handleSync = () => {
+      fetchNotifications();
+    };
+    window.addEventListener("technova:notificacion-leida", handleSync);
+    window.addEventListener("technova:notificaciones-todas-leidas", handleSync);
+
+    return () => {
+      window.removeEventListener("technova:notificacion-leida", handleSync);
+      window.removeEventListener("technova:notificaciones-todas-leidas", handleSync);
+    };
   }, []);
 
   // Cerrar al hacer clic fuera
@@ -59,6 +71,7 @@ export default function NotificationsMenu() {
       if (res.ok) {
         setUnreadCount(0);
         setNotifications((prev) => prev.map((n) => ({ ...n, leida: 1 })));
+        window.dispatchEvent(new CustomEvent("technova:notificaciones-todas-leidas"));
       }
     } catch (err) {
       console.error("Error al marcar como leídas:", err);
@@ -139,6 +152,18 @@ export default function NotificationsMenu() {
                 </div>
               ))
             )}
+          </div>
+
+          {/* Footer Ver todas */}
+          <div className="p-2.5 px-4 bg-[#FAF7F5] border-t border-gray-100 text-center">
+            <Link
+              href="/cuenta/notificaciones"
+              onClick={() => setIsOpen(false)}
+              className="text-xs font-semibold text-[#6B1F4A] hover:underline inline-flex items-center gap-1"
+            >
+              <span>Ver todas las notificaciones</span>
+              <span aria-hidden="true">→</span>
+            </Link>
           </div>
         </div>
       )}

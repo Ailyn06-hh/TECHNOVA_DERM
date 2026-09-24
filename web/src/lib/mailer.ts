@@ -538,3 +538,355 @@ export async function sendOrderConfirmationEmail(
     return { success: false, devMode: false };
   }
 }
+
+/**
+ * Notificación por correo sobre alta o baja de tarjeta guardada
+ */
+export async function sendCardActivityEmail({
+  to,
+  nombre,
+  accion,
+  marca = "Tarjeta",
+  ultimos4,
+}: {
+  to: string;
+  nombre?: string;
+  accion: "agregada" | "eliminada";
+  marca?: string;
+  ultimos4: string;
+}): Promise<{ success: boolean; devMode: boolean }> {
+  const config = getSmtpConfig();
+  const mensajeAccion =
+    accion === "agregada"
+      ? `Se agregó la tarjeta ${marca.toUpperCase()} terminación ${ultimos4} a tu cuenta.`
+      : `Se eliminó la tarjeta terminación ${ultimos4} de tu cuenta.`;
+
+  if (!config.isConfigured) {
+    console.log("\n=======================================================");
+    console.log("💳 [TECHNOVA-DERM] ACTIVIDAD DE TARJETA (MODO DEV)");
+    console.log(`📧 Destinatario : ${to}`);
+    if (nombre) console.log(`👤 Nombre       : ${nombre}`);
+    console.log(`🔐 Notificación : ${mensajeAccion}`);
+    console.log("=======================================================\n");
+    return { success: true, devMode: true };
+  }
+
+  try {
+    const transporter = getTransporter(config);
+    await transporter.sendMail({
+      from: config.mailFrom,
+      to,
+      subject: `Seguridad en tu cuenta: ${mensajeAccion} - ${NOMBRE_MARCA}`,
+      text: `Hola ${nombre || "cliente"},\n\nTe informamos que ${mensajeAccion.toLowerCase()} Si no reconoces este movimiento, por favor contáctanos de inmediato.\n\nAtentamente,\nEquipo de ${NOMBRE_MARCA}`,
+    });
+    return { success: true, devMode: false };
+  } catch (err: any) {
+    console.error("[MAILER ERROR] Error al enviar correo de actividad de tarjeta:", err.message);
+    return { success: false, devMode: false };
+  }
+}
+
+export interface SendNotificationEmailOptions {
+  to: string;
+  nombre?: string;
+  titulo: string;
+  mensaje: string;
+  enlace?: string;
+  evento?: string;
+}
+
+/**
+ * Envío de correos para notificaciones de eventos (pedidos, recompras, ofertas, etc.)
+ */
+export async function sendNotificationEmail({
+  to,
+  nombre,
+  titulo,
+  mensaje,
+  enlace,
+  evento,
+}: SendNotificationEmailOptions): Promise<{ success: boolean; devMode: boolean }> {
+  const config = getSmtpConfig();
+  const appUrl = process.env.APP_URL || "http://localhost:3000";
+  const urlFinal = enlace
+    ? enlace.startsWith("http")
+      ? enlace
+      : `${appUrl}${enlace.startsWith("/") ? "" : "/"}${enlace}`
+    : appUrl;
+
+  if (!config.isConfigured) {
+    console.log("\n=======================================================");
+    console.log(`🔔 [${NOMBRE_MARCA}] CORREO DE NOTIFICACIÓN (MODO DEV)`);
+    console.log(`📧 Destinatario : ${to}`);
+    if (nombre) console.log(`👤 Nombre       : ${nombre}`);
+    console.log(`🏷️ Evento       : ${evento || "general"}`);
+    console.log(`📌 Título       : ${titulo}`);
+    console.log(`💬 Mensaje      : ${mensaje}`);
+    if (enlace) console.log(`🔗 Enlace       : ${urlFinal}`);
+    console.log("=======================================================\n");
+    return { success: true, devMode: true };
+  }
+
+  try {
+    const transporter = getTransporter(config);
+    const htmlContent = `
+      <!DOCTYPE html>
+      <html lang="es">
+      <head>
+        <meta charset="utf-8">
+        <title>${titulo} - ${NOMBRE_MARCA}</title>
+      </head>
+      <body style="margin: 0; padding: 0; background-color: #FAF7F5; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #1A1715;">
+        <table width="100%" border="0" cellspacing="0" cellpadding="0" style="background-color: #FAF7F5; padding: 40px 20px;">
+          <tr>
+            <td align="center">
+              <table width="100%" max-width="520" border="0" cellspacing="0" cellpadding="0" style="max-width: 520px; background-color: #FFFFFF; border-radius: 20px; overflow: hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.05); border: 1px solid #EAE4DD;">
+                <tr>
+                  <td align="center" style="background-color: #6B1F4A; padding: 30px 24px; text-align: center;">
+                    <h1 style="margin: 0; color: #FAF7F5; font-size: 24px; font-weight: normal;">${NOMBRE_MARCA}</h1>
+                    <p style="margin: 6px 0 0 0; color: #F3E1E4; font-size: 12px; font-weight: 300;">${LEMA}</p>
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding: 32px 28px; text-align: left;">
+                    <h2 style="margin: 0 0 12px 0; font-size: 18px; color: #1A1715; font-weight: 600;">${titulo}</h2>
+                    <p style="margin: 0 0 24px 0; font-size: 14px; line-height: 1.6; color: #66605C;">
+                      ${nombre ? `Hola <strong>${nombre}</strong>,<br><br>` : ""}${mensaje}
+                    </p>
+                    ${
+                      enlace
+                        ? `<div style="text-align: center; margin-top: 24px;">
+                            <a href="${urlFinal}" style="display: inline-block; background-color: #6B1F4A; color: #FFFFFF; text-decoration: none; padding: 12px 26px; border-radius: 50px; font-size: 13px; font-weight: 600;">
+                              Ver en ${NOMBRE_MARCA}
+                            </a>
+                          </div>`
+                        : ""
+                    }
+                  </td>
+                </tr>
+                <tr>
+                  <td style="background-color: #F8F5F0; padding: 16px 20px; text-align: center; border-top: 1px solid #ECE7E1;">
+                    <p style="margin: 0; font-size: 11px; color: #9A928D;">
+                      © 2026 ${NOMBRE_MARCA} · Compra en línea, en la app o en tienda.
+                    </p>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+        </table>
+      </body>
+      </html>
+    `;
+
+    await transporter.sendMail({
+      from: config.mailFrom,
+      to,
+      subject: `${titulo} - ${NOMBRE_MARCA}`,
+      text: `${titulo}\n\n${nombre ? `Hola ${nombre},\n\n` : ""}${mensaje}\n\n${enlace ? `Accede aquí: ${urlFinal}` : ""}\n\n${NOMBRE_MARCA}`,
+      html: htmlContent,
+    });
+
+    return { success: true, devMode: false };
+  } catch (err: any) {
+    console.error("[MAILER NOTIFICATION ERROR]:", err.message);
+    return { success: false, devMode: false };
+  }
+}
+
+export interface SendCorteCajaEmailOptions {
+  to: string;
+  sucursalNombre: string;
+  cajaNombre: string;
+  cajeraNombre: string;
+  turnoId: number;
+  inicioTurno: string;
+  finTurno: string;
+  fondoInicial: number;
+  efectivoEsperado: number;
+  efectivoContado: number;
+  tarjetaEsperado: number;
+  tarjetaContado: number;
+  transferenciaEsperado: number;
+  transferenciaContado: number;
+  totalEsperado: number;
+  totalContado: number;
+  diferenciaTotal: number;
+  ventasCount: number;
+  ventasTotal: number;
+  ticketPromedio: number;
+  pedidosEntregados: number;
+  devolucionesCount: number;
+  devolucionesTotal: number;
+  notas?: string | null;
+  supervisorNombre?: string | null;
+}
+
+/**
+ * Envío de reporte de corte de caja a gerencia de sucursal
+ */
+export async function sendCorteCajaEmail(
+  opts: SendCorteCajaEmailOptions
+): Promise<{ success: boolean; devMode: boolean }> {
+  const config = getSmtpConfig();
+  const fmt = (n: number) =>
+    `$${Number(n || 0).toLocaleString("es-MX", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+  const diffColor =
+    Math.abs(opts.diferenciaTotal) <= 10
+      ? "#059669"
+      : opts.diferenciaTotal < 0
+      ? "#DC2626"
+      : "#D97706";
+
+  if (!config.isConfigured) {
+    console.log("\n=======================================================");
+    console.log(`📊 [${NOMBRE_MARCA}] CORTE DE CAJA ENVIADO A GERENCIA (MODO DEV)`);
+    console.log(`📧 Destinatario       : ${opts.to}`);
+    console.log(`🏪 Sucursal / Caja    : ${opts.sucursalNombre} · ${opts.cajaNombre}`);
+    console.log(`👤 Cajera             : ${opts.cajeraNombre}`);
+    console.log(`🕒 Turno #${opts.turnoId}         : ${opts.inicioTurno} -> ${opts.finTurno}`);
+    console.log(`💳 Ventas mostrador   : ${opts.ventasCount} (${fmt(opts.ventasTotal)}) · Prom: ${fmt(opts.ticketPromedio)}`);
+    console.log(`📦 Pickups entregados : ${opts.pedidosEntregados}`);
+    console.log(`💵 Fondo Inicial      : ${fmt(opts.fondoInicial)}`);
+    console.log(`💵 Efectivo           : Esperado ${fmt(opts.efectivoEsperado)} | Contado ${fmt(opts.efectivoContado)}`);
+    console.log(`💳 Tarjeta            : Esperado ${fmt(opts.tarjetaEsperado)} | Contado ${fmt(opts.tarjetaContado)}`);
+    console.log(`🏛️ Transferencia      : Esperado ${fmt(opts.transferenciaEsperado)} | Contado ${fmt(opts.transferenciaContado)}`);
+    console.log(`⚖️ Balance Total      : Esperado ${fmt(opts.totalEsperado)} | Contado ${fmt(opts.totalContado)} | Dif: ${fmt(opts.diferenciaTotal)}`);
+    if (opts.supervisorNombre) console.log(`🛡️ Autorizado por     : ${opts.supervisorNombre}`);
+    if (opts.notas) console.log(`📝 Notas              : ${opts.notas}`);
+    console.log("ℹ️  SMTP no configurado en .env.local. Resumen enviado a consola.");
+    console.log("=======================================================\n");
+    return { success: true, devMode: true };
+  }
+
+  try {
+    const transporter = getTransporter(config);
+    const htmlContent = `
+      <!DOCTYPE html>
+      <html lang="es">
+      <head>
+        <meta charset="utf-8">
+        <title>Corte de Caja Turno #${opts.turnoId} - ${NOMBRE_MARCA}</title>
+      </head>
+      <body style="margin: 0; padding: 0; background-color: #FAF7F5; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #1A1715;">
+        <table width="100%" border="0" cellspacing="0" cellpadding="0" style="background-color: #FAF7F5; padding: 40px 20px;">
+          <tr>
+            <td align="center">
+              <table width="100%" max-width="580" border="0" cellspacing="0" cellpadding="0" style="max-width: 580px; background-color: #FFFFFF; border-radius: 20px; overflow: hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.05); border: 1px solid #EAE4DD;">
+                <tr>
+                  <td align="center" style="background-color: #6B1F4A; padding: 30px 24px; text-align: center;">
+                    <h1 style="margin: 0; color: #FAF7F5; font-size: 24px; font-weight: normal;">${NOMBRE_MARCA}</h1>
+                    <p style="margin: 6px 0 0 0; color: #F3E1E4; font-size: 13px;">Reporte Oficial de Cierre y Arqueo de Caja</p>
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding: 28px 24px;">
+                    <div style="background-color: #F8F5F0; border-radius: 12px; padding: 16px; margin-bottom: 20px; font-size: 12px; line-height: 1.6; color: #57534E;">
+                      <strong style="color: #1A1715; font-size: 14px;">Turno #${opts.turnoId} · ${opts.sucursalNombre}</strong><br>
+                      <strong>Caja:</strong> ${opts.cajaNombre} &nbsp;|&nbsp; <strong>Cajera:</strong> ${opts.cajeraNombre}<br>
+                      <strong>Inicio:</strong> ${opts.inicioTurno} &nbsp;|&nbsp; <strong>Cierre:</strong> ${opts.finTurno}
+                    </div>
+
+                    <h3 style="margin: 0 0 10px 0; font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px; color: #78716C;">Resumen Operativo</h3>
+                    <table width="100%" border="0" cellspacing="0" cellpadding="8" style="font-size: 12px; border-collapse: collapse; margin-bottom: 20px;">
+                      <tr style="border-bottom: 1px solid #E7E5E4;">
+                        <td>Ventas Mostrador</td>
+                        <td align="right"><strong>${opts.ventasCount}</strong> (${fmt(opts.ventasTotal)})</td>
+                      </tr>
+                      <tr style="border-bottom: 1px solid #E7E5E4;">
+                        <td>Ticket Promedio</td>
+                        <td align="right"><strong>${fmt(opts.ticketPromedio)}</strong></td>
+                      </tr>
+                      <tr style="border-bottom: 1px solid #E7E5E4;">
+                        <td>Pedidos Recogidos (Omnicanal)</td>
+                        <td align="right"><strong>${opts.pedidosEntregados}</strong></td>
+                      </tr>
+                      <tr style="border-bottom: 1px solid #E7E5E4;">
+                        <td>Devoluciones</td>
+                        <td align="right"><strong>${opts.devolucionesCount}</strong> (${fmt(opts.devolucionesTotal)})</td>
+                      </tr>
+                    </table>
+
+                    <h3 style="margin: 0 0 10px 0; font-size: 13px; text-transform: uppercase; letter-spacing: 0.5px; color: #78716C;">Arqueo y Cierre de Valores</h3>
+                    <table width="100%" border="0" cellspacing="0" cellpadding="8" style="font-size: 12px; border-collapse: collapse; margin-bottom: 20px;">
+                      <tr style="background-color: #F5F5F4; font-weight: bold; font-size: 11px; text-transform: uppercase;">
+                        <td>Método</td>
+                        <td align="right">Esperado</td>
+                        <td align="right">Contado</td>
+                        <td align="right">Diferencia</td>
+                      </tr>
+                      <tr style="border-bottom: 1px solid #E7E5E4;">
+                        <td>Efectivo <span style="font-size: 10px; color: #78716C;">(Inc. fondo ${fmt(opts.fondoInicial)})</span></td>
+                        <td align="right">${fmt(opts.efectivoEsperado)}</td>
+                        <td align="right"><strong>${fmt(opts.efectivoContado)}</strong></td>
+                        <td align="right">${fmt(opts.efectivoContado - opts.efectivoEsperado)}</td>
+                      </tr>
+                      <tr style="border-bottom: 1px solid #E7E5E4;">
+                        <td>Tarjeta Terminal</td>
+                        <td align="right">${fmt(opts.tarjetaEsperado)}</td>
+                        <td align="right"><strong>${fmt(opts.tarjetaContado)}</strong></td>
+                        <td align="right">${fmt(opts.tarjetaContado - opts.tarjetaEsperado)}</td>
+                      </tr>
+                      <tr style="border-bottom: 1px solid #E7E5E4;">
+                        <td>Transferencia SPEI</td>
+                        <td align="right">${fmt(opts.transferenciaEsperado)}</td>
+                        <td align="right"><strong>${fmt(opts.transferenciaContado)}</strong></td>
+                        <td align="right">${fmt(opts.transferenciaContado - opts.transferenciaEsperado)}</td>
+                      </tr>
+                      <tr style="background-color: #FAF7F5; font-weight: bold; font-size: 13px;">
+                        <td>TOTAL</td>
+                        <td align="right">${fmt(opts.totalEsperado)}</td>
+                        <td align="right">${fmt(opts.totalContado)}</td>
+                        <td align="right" style="color: ${diffColor};">${fmt(opts.diferenciaTotal)}</td>
+                      </tr>
+                    </table>
+
+                    ${
+                      opts.supervisorNombre
+                        ? `<div style="padding: 10px 14px; background-color: #FEF3C7; border: 1px solid #FCD34D; border-radius: 10px; font-size: 11px; color: #92400E; margin-bottom: 16px;">
+                            🛡️ <strong>Autorización de Supervisión:</strong> Diferencia autorizada por <strong>${opts.supervisorNombre}</strong>.
+                          </div>`
+                        : ""
+                    }
+
+                    ${
+                      opts.notas
+                        ? `<div style="background-color: #F8F5F0; border-radius: 10px; padding: 12px; font-size: 12px; color: #57534E; margin-bottom: 16px;">
+                            <strong>Notas del turno:</strong><br>${opts.notas}
+                          </div>`
+                        : ""
+                    }
+                  </td>
+                </tr>
+                <tr>
+                  <td style="background-color: #F8F5F0; padding: 16px 20px; text-align: center; border-top: 1px solid #ECE7E1;">
+                    <p style="margin: 0; font-size: 11px; color: #9A928D;">
+                      © 2026 ${NOMBRE_MARCA} · Sistema POS Omnicanal · Cierre automático
+                    </p>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+        </table>
+      </body>
+      </html>
+    `;
+
+    await transporter.sendMail({
+      from: config.mailFrom,
+      to: opts.to,
+      subject: `Corte de Caja Turno #${opts.turnoId} - ${opts.sucursalNombre} - ${NOMBRE_MARCA}`,
+      text: `Corte de caja Turno #${opts.turnoId} en ${opts.sucursalNombre} (${opts.cajaNombre}). Cajera: ${opts.cajeraNombre}. Total contado: ${fmt(opts.totalContado)}. Diferencia: ${fmt(opts.diferenciaTotal)}.`,
+      html: htmlContent,
+    });
+
+    return { success: true, devMode: false };
+  } catch (err: any) {
+    console.error("[MAILER CORTE ERROR]:", err.message);
+    return { success: false, devMode: false };
+  }
+}
+
+

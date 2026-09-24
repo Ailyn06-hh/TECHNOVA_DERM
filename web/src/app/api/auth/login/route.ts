@@ -235,6 +235,12 @@ export async function POST(req: NextRequest) {
       { rememberMe: Boolean(rememberMe) }
     );
 
+    // 12. Evaluar y emitir sugerencia de recompra (máximo 1 vez por producto cada 30 días)
+    // TODO: Programar ejecución periódica diaria mediante cron job / scheduler para todos los usuarios activos
+    import("@/lib/recomendaciones").then(({ sugerirRecompra }) => {
+      sugerirRecompra(user.id).catch((err) => console.error("[LOGIN RECOMPRA ERROR]:", err));
+    });
+
     return response;
   } catch (error: any) {
     console.error("[API LOGIN ERROR]:", error);

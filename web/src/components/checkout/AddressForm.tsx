@@ -1,65 +1,103 @@
 "use client";
 
-import React, { useState } from "react";
-import { Loader2, Plus, AlertCircle } from "lucide-react";
+import React, { useState, useEffect } from "react";
+import { Loader2, AlertCircle } from "lucide-react";
 import { validarDireccion, type DireccionInput } from "@/lib/validaciones";
+import PostalCodeLookup from "@/components/account/addresses/PostalCodeLookup";
 
 export interface DireccionGuardada {
   id: number;
   usuario_id?: number;
   alias: string;
-  calle: string;
-  numero_exterior: string;
+  calle_y_numero: string;
+  calle?: string;
+  numero_exterior?: string;
   numero_interior?: string | null;
   colonia: string;
   codigo_postal: string;
   ciudad: string;
   estado: string;
   referencias?: string | null;
-  predeterminada: number | boolean;
+  predeterminada: boolean | number;
 }
 
 export interface AddressFormProps {
   onSuccess: (direccion: DireccionGuardada) => void;
   onCancel?: () => void;
   initialValues?: Partial<DireccionInput>;
+  isEditing?: boolean;
+  direccionId?: number;
+  title?: string;
 }
+
+const ALIAS_PREDETERMINADOS = ["Casa", "Trabajo", "Otro"];
 
 export default function AddressForm({
   onSuccess,
   onCancel,
   initialValues,
+  isEditing = false,
+  direccionId,
+  title,
 }: AddressFormProps) {
-  const [formData, setFormData] = useState<DireccionInput>({
-    alias: initialValues?.alias || "Casa",
-    calle: initialValues?.calle || "",
-    numero_exterior: initialValues?.numero_exterior || "",
-    numero_interior: initialValues?.numero_interior || "",
-    colonia: initialValues?.colonia || "",
-    codigo_postal: initialValues?.codigo_postal || "",
-    ciudad: initialValues?.ciudad || "Ciudad de México",
-    estado: initialValues?.estado || "CDMX",
-    referencias: initialValues?.referencias || "",
-    predeterminada: initialValues?.predeterminada ?? true,
-  });
+  const initialCalleYNumero =
+    initialValues?.calle_y_numero ||
+    `${initialValues?.calle || ""} ${initialValues?.numero_exterior || ""}`.trim();
+
+  const [calleYNumero, setCalleYNumero] = useState(initialCalleYNumero);
+  const [numeroInterior, setNumeroInterior] = useState(initialValues?.numero_interior || "");
+  const [colonia, setColonia] = useState(initialValues?.colonia || "");
+  const [codigoPostal, setCodigoPostal] = useState(initialValues?.codigo_postal || "");
+  const [ciudad, setCiudad] = useState(initialValues?.ciudad || "");
+  const [estado, setEstado] = useState(initialValues?.estado || "");
+  const [referencias, setReferencias] = useState(initialValues?.referencias || "");
+  const [predeterminada, setPredeterminada] = useState<boolean>(
+    initialValues?.predeterminada === true || initialValues?.predeterminada === 1
+  );
+
+  // Manejo de chips de Alias: Casa, Trabajo, Otro
+  const initialAlias = initialValues?.alias || "Casa";
+  const isDefaultChip = ["Casa", "Trabajo"].includes(initialAlias);
+  const [selectedChip, setSelectedChip] = useState<string>(isDefaultChip ? initialAlias : "Otro");
+  const [customAlias, setCustomAlias] = useState<string>(isDefaultChip ? "" : initialAlias);
 
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [serverError, setServerError] = useState<string | null>(null);
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-    const { name, value, type } = e.target;
-    const checked = (e.target as HTMLInputElement).checked;
+  // Sincronizar si cambian los initialValues (por ejemplo al hacer clic en Editar)
+  useEffect(() => {
+    if (initialValues) {
+      const cYNum =
+        initialValues.calle_y_numero ||
+        `${initialValues.calle || ""} ${initialValues.numero_exterior || ""}`.trim();
+      setCalleYNumero(cYNum);
+      setNumeroInterior(initialValues.numero_interior || "");
+      setColonia(initialValues.colonia || "");
+      setCodigoPostal(initialValues.codigo_postal || "");
+      setCiudad(initialValues.ciudad || "");
+      setEstado(initialValues.estado || "");
+      setReferencias(initialValues.referencias || "");
+      setPredeterminada(
+        initialValues.predeterminada === true || initialValues.predeterminada === 1
+      );
 
-    setFormData((prev) => ({
-      ...prev,
-      [name]: type === "checkbox" ? checked : value,
-    }));
+      const al = initialValues.alias || "Casa";
+      if (["Casa", "Trabajo"].includes(al)) {
+        setSelectedChip(al);
+        setCustomAlias("");
+      } else {
+        setSelectedChip("Otro");
+        setCustomAlias(al);
+      }
+    }
+  }, [initialValues]);
 
-    if (errors[name]) {
+  const clearError = (field: string) => {
+    if (errors[field]) {
       setErrors((prev) => {
         const next = { ...prev };
-        delete next[name];
+        delete next[field];
         return next;
       });
     }
@@ -69,7 +107,22 @@ export default function AddressForm({
     e.preventDefault();
     setServerError(null);
 
-    const validacion = validarDireccion(formData);
+    const aliasFinal =
+      selectedChip === "Otro" ? customAlias.trim() || "Otro" : selectedChip;
+
+    const payload: Partial<DireccionInput> = {
+      alias: aliasFinal,
+      calle_y_numero: calleYNumero.trim(),
+      numero_interior: numeroInterior.trim() || null,
+      colonia: colonia.trim(),
+      codigo_postal: codigoPostal.trim(),
+      ciudad: ciudad.trim() || "Aguascalientes",
+      estado: estado.trim() || "Ags.",
+      referencias: referencias.trim() || null,
+      predeterminada,
+    };
+
+    const validacion = validarDireccion(payload);
     if (!validacion.valido) {
       setErrors(validacion.errores as Record<string, string>);
       return;
@@ -77,28 +130,45 @@ export default function AddressForm({
 
     setIsSubmitting(true);
     try {
-      const res = await fetch("/api/direcciones", {
-        method: "POST",
+      const url =
+        isEditing && direccionId
+          ? `/api/direcciones/${direccionId}`
+          : "/api/direcciones";
+      const method = isEditing && direccionId ? "PATCH" : "POST";
+
+      const res = await fetch(url, {
+        method,
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(formData),
+        body: JSON.stringify(payload),
       });
 
       const data = await res.json();
       if (!res.ok || !data.exito) {
-        setServerError(data.error || "No se pudo guardar la dirección.");
+        setServerError(data.error || "No fue posible guardar la dirección.");
         return;
       }
 
-      onSuccess(data.direccion);
+      onSuccess(
+        data.direccion || {
+          id: direccionId || data.id,
+          ...payload,
+        }
+      );
     } catch {
-      setServerError("Error de red al guardar la dirección.");
+      setServerError("Error de red al conectar con el servidor.");
     } finally {
       setIsSubmitting(false);
     }
   };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-3.5 text-xs text-slate-700">
+    <form onSubmit={handleSubmit} className="space-y-4 text-xs text-stone-700">
+      {title && (
+        <h3 className="font-serif text-base font-medium text-stone-900 pb-2 border-b border-stone-100">
+          {title}
+        </h3>
+      )}
+
       {serverError && (
         <div className="p-3 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 text-xs flex items-center gap-2">
           <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
@@ -106,186 +176,177 @@ export default function AddressForm({
         </div>
       )}
 
-      {/* Alias */}
-      <div>
-        <label className="block text-[11px] font-medium text-slate-500 mb-1">
-          Identificador / Alias (ej. Casa, Oficina)
-        </label>
-        <input
-          type="text"
-          name="alias"
-          value={formData.alias}
-          onChange={handleChange}
-          placeholder="Casa"
-          className="w-full px-3.5 py-2 rounded-xl bg-white border border-slate-200 focus:border-[#6B1F4A] focus:ring-1 focus:ring-[#6B1F4A] outline-none text-xs transition"
-        />
-      </div>
-
-      {/* Calle y Números */}
-      <div className="grid grid-cols-1 sm:grid-cols-12 gap-3">
-        <div className="sm:col-span-6">
-          <label className="block text-[11px] font-medium text-slate-500 mb-1">
-            Calle <span className="text-rose-500">*</span>
-          </label>
-          <input
-            type="text"
-            name="calle"
-            value={formData.calle}
-            onChange={handleChange}
-            placeholder="Av. Álvaro Obregón"
-            className={`w-full px-3.5 py-2 rounded-xl bg-white border outline-none text-xs transition ${
-              errors.calle ? "border-rose-400 ring-1 ring-rose-200" : "border-slate-200 focus:border-[#6B1F4A]"
-            }`}
-          />
-          {errors.calle && <p className="text-[10px] text-rose-600 mt-0.5">{errors.calle}</p>}
-        </div>
-
-        <div className="sm:col-span-3">
-          <label className="block text-[11px] font-medium text-slate-500 mb-1">
-            Núm. Ext. <span className="text-rose-500">*</span>
-          </label>
-          <input
-            type="text"
-            name="numero_exterior"
-            value={formData.numero_exterior}
-            onChange={handleChange}
-            placeholder="123"
-            className={`w-full px-3.5 py-2 rounded-xl bg-white border outline-none text-xs transition ${
-              errors.numero_exterior ? "border-rose-400 ring-1 ring-rose-200" : "border-slate-200 focus:border-[#6B1F4A]"
-            }`}
-          />
-          {errors.numero_exterior && <p className="text-[10px] text-rose-600 mt-0.5">{errors.numero_exterior}</p>}
-        </div>
-
-        <div className="sm:col-span-3">
-          <label className="block text-[11px] font-medium text-slate-500 mb-1">
-            Núm. Int.
-          </label>
-          <input
-            type="text"
-            name="numero_interior"
-            value={formData.numero_interior || ""}
-            onChange={handleChange}
-            placeholder="4B (opcional)"
-            className="w-full px-3.5 py-2 rounded-xl bg-white border border-slate-200 focus:border-[#6B1F4A] outline-none text-xs transition"
-          />
-        </div>
-      </div>
-
-      {/* Colonia y Código Postal */}
-      <div className="grid grid-cols-1 sm:grid-cols-12 gap-3">
+      {/* Calle y número + Interior */}
+      <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 items-start">
         <div className="sm:col-span-8">
-          <label className="block text-[11px] font-medium text-slate-500 mb-1">
-            Colonia / Fraccionamiento <span className="text-rose-500">*</span>
+          <label htmlFor="calle-field" className="block text-[11px] font-medium text-stone-600 mb-1">
+            Calle y número <span className="text-rose-500">*</span>
           </label>
           <input
+            id="calle-field"
             type="text"
-            name="colonia"
-            value={formData.colonia}
-            onChange={handleChange}
-            placeholder="Roma Norte"
-            className={`w-full px-3.5 py-2 rounded-xl bg-white border outline-none text-xs transition ${
-              errors.colonia ? "border-rose-400 ring-1 ring-rose-200" : "border-slate-200 focus:border-[#6B1F4A]"
+            value={calleYNumero}
+            onChange={(e) => {
+              setCalleYNumero(e.target.value);
+              clearError("calle_y_numero");
+            }}
+            placeholder="Ej. Av. Madero 214"
+            className={`w-full px-3.5 py-2.5 rounded-xl bg-white border text-xs focus:border-[#5B122C] focus:ring-1 focus:ring-[#5B122C] outline-none transition ${
+              errors.calle_y_numero
+                ? "border-rose-400 ring-1 ring-rose-200"
+                : "border-stone-300"
             }`}
           />
-          {errors.colonia && <p className="text-[10px] text-rose-600 mt-0.5">{errors.colonia}</p>}
+          {errors.calle_y_numero && (
+            <p className="text-[10px] text-rose-600 mt-1">{errors.calle_y_numero}</p>
+          )}
         </div>
 
         <div className="sm:col-span-4">
-          <label className="block text-[11px] font-medium text-slate-500 mb-1">
-            C.P. (5 dígitos) <span className="text-rose-500">*</span>
+          <label htmlFor="interior-field" className="block text-[11px] font-medium text-stone-600 mb-1">
+            Interior <span className="text-stone-400 text-[10px]">(opcional)</span>
           </label>
           <input
+            id="interior-field"
             type="text"
-            name="codigo_postal"
-            maxLength={5}
-            value={formData.codigo_postal}
-            onChange={handleChange}
-            placeholder="06700"
-            className={`w-full px-3.5 py-2 rounded-xl bg-white border outline-none text-xs transition ${
-              errors.codigo_postal ? "border-rose-400 ring-1 ring-rose-200" : "border-slate-200 focus:border-[#6B1F4A]"
+            maxLength={10}
+            value={numeroInterior}
+            onChange={(e) => {
+              setNumeroInterior(e.target.value);
+              clearError("numero_interior");
+            }}
+            placeholder="Ej. 3, Depto 4B"
+            className={`w-full px-3.5 py-2.5 rounded-xl bg-white border text-xs focus:border-[#5B122C] focus:ring-1 focus:ring-[#5B122C] outline-none transition ${
+              errors.numero_interior
+                ? "border-rose-400 ring-1 ring-rose-200"
+                : "border-stone-300"
             }`}
           />
-          {errors.codigo_postal && <p className="text-[10px] text-rose-600 mt-0.5">{errors.codigo_postal}</p>}
+          {errors.numero_interior && (
+            <p className="text-[10px] text-rose-600 mt-1">{errors.numero_interior}</p>
+          )}
         </div>
       </div>
 
-      {/* Ciudad y Estado */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        <div>
-          <label className="block text-[11px] font-medium text-slate-500 mb-1">
-            Ciudad / Municipio <span className="text-rose-500">*</span>
-          </label>
-          <input
-            type="text"
-            name="ciudad"
-            value={formData.ciudad}
-            onChange={handleChange}
-            placeholder="Cuauhtémoc / CDMX"
-            className={`w-full px-3.5 py-2 rounded-xl bg-white border outline-none text-xs transition ${
-              errors.ciudad ? "border-rose-400 ring-1 ring-rose-200" : "border-slate-200 focus:border-[#6B1F4A]"
-            }`}
-          />
-          {errors.ciudad && <p className="text-[10px] text-rose-600 mt-0.5">{errors.ciudad}</p>}
-        </div>
-
-        <div>
-          <label className="block text-[11px] font-medium text-slate-500 mb-1">
-            Estado <span className="text-rose-500">*</span>
-          </label>
-          <input
-            type="text"
-            name="estado"
-            value={formData.estado}
-            onChange={handleChange}
-            placeholder="CDMX"
-            className={`w-full px-3.5 py-2 rounded-xl bg-white border outline-none text-xs transition ${
-              errors.estado ? "border-rose-400 ring-1 ring-rose-200" : "border-slate-200 focus:border-[#6B1F4A]"
-            }`}
-          />
-          {errors.estado && <p className="text-[10px] text-rose-600 mt-0.5">{errors.estado}</p>}
-        </div>
-      </div>
+      {/* Selector de Colonia y Código Postal con autocompletado */}
+      <PostalCodeLookup
+        codigoPostal={codigoPostal}
+        colonia={colonia}
+        ciudad={ciudad}
+        estado={estado}
+        errorCp={errors.codigo_postal}
+        errorColonia={errors.colonia}
+        errorCiudad={errors.ciudad}
+        errorEstado={errors.estado}
+        onChangeCp={(val) => {
+          setCodigoPostal(val);
+          clearError("codigo_postal");
+        }}
+        onChangeColonia={(val) => {
+          setColonia(val);
+          clearError("colonia");
+        }}
+        onChangeCiudad={(val) => {
+          setCiudad(val);
+          clearError("ciudad");
+        }}
+        onChangeEstado={(val) => {
+          setEstado(val);
+          clearError("estado");
+        }}
+      />
 
       {/* Referencias */}
       <div>
-        <label className="block text-[11px] font-medium text-slate-500 mb-1">
-          Referencias de entrega (opcional, máx. 200 caracteres)
+        <label htmlFor="ref-field" className="block text-[11px] font-medium text-stone-600 mb-1">
+          Referencias de entrega <span className="text-stone-400 text-[10px]">(opcional)</span>
         </label>
-        <textarea
-          name="referencias"
-          maxLength={200}
-          rows={2}
-          value={formData.referencias || ""}
-          onChange={handleChange}
-          placeholder="Entre calles, color de fachada, zaguán..."
-          className="w-full px-3.5 py-2 rounded-xl bg-white border border-slate-200 focus:border-[#6B1F4A] outline-none text-xs resize-none transition"
-        />
-      </div>
-
-      {/* Usar como predeterminada */}
-      <div className="flex items-center gap-2 pt-1">
         <input
-          type="checkbox"
-          id="predeterminada_check"
-          name="predeterminada"
-          checked={Boolean(formData.predeterminada)}
-          onChange={handleChange}
-          className="w-4 h-4 text-[#6B1F4A] rounded border-slate-300 focus:ring-[#6B1F4A]"
+          id="ref-field"
+          type="text"
+          maxLength={200}
+          value={referencias}
+          onChange={(e) => {
+            setReferencias(e.target.value);
+            clearError("referencias");
+          }}
+          placeholder="Entre calles, color de fachada o reja"
+          className="w-full px-3.5 py-2.5 rounded-xl bg-white border border-stone-300 focus:border-[#5B122C] focus:ring-1 focus:ring-[#5B122C] outline-none text-xs transition"
         />
-        <label htmlFor="predeterminada_check" className="text-xs text-slate-600 cursor-pointer">
-          Usar esta dirección como predeterminada para futuras compras
+        {errors.referencias && (
+          <p className="text-[10px] text-rose-600 mt-1">{errors.referencias}</p>
+        )}
+      </div>
+
+      {/* Alias con Chips: Casa, Trabajo, Otro */}
+      <div>
+        <label className="block text-[11px] font-medium text-stone-600 mb-1.5">
+          Identificador de la dirección <span className="text-rose-500">*</span>
+        </label>
+        <div className="flex flex-wrap items-center gap-2">
+          {ALIAS_PREDETERMINADOS.map((chip) => {
+            const isSelected = selectedChip === chip;
+            return (
+              <button
+                key={chip}
+                type="button"
+                onClick={() => {
+                  setSelectedChip(chip);
+                  clearError("alias");
+                }}
+                className={`px-3.5 py-1.5 rounded-full text-xs font-medium border transition-all cursor-pointer ${
+                  isSelected
+                    ? "bg-[#5B122C] text-white border-[#5B122C] shadow-2xs"
+                    : "bg-white text-stone-700 border-stone-300 hover:border-stone-400"
+                }`}
+              >
+                {chip}
+              </button>
+            );
+          })}
+        </div>
+
+        {selectedChip === "Otro" && (
+          <div className="mt-2.5">
+            <input
+              type="text"
+              maxLength={30}
+              value={customAlias}
+              onChange={(e) => {
+                setCustomAlias(e.target.value);
+                clearError("alias");
+              }}
+              placeholder="Ej. Departamento de playa, Estudio"
+              className={`w-full px-3.5 py-2 rounded-xl bg-white border text-xs focus:border-[#5B122C] focus:ring-1 focus:ring-[#5B122C] outline-none transition ${
+                errors.alias ? "border-rose-400 ring-1 ring-rose-200" : "border-stone-300"
+              }`}
+            />
+          </div>
+        )}
+        {errors.alias && <p className="text-[10px] text-rose-600 mt-1">{errors.alias}</p>}
+      </div>
+
+      {/* Checkbox Predeterminada */}
+      <div className="pt-1">
+        <label className="flex items-center gap-2.5 cursor-pointer text-xs text-stone-700">
+          <input
+            type="checkbox"
+            checked={predeterminada}
+            onChange={(e) => setPredeterminada(e.target.checked)}
+            className="w-4 h-4 rounded-sm text-[#5B122C] accent-[#5B122C] border-stone-300 cursor-pointer"
+          />
+          <span className="font-normal select-none">Usar como dirección predeterminada</span>
         </label>
       </div>
 
-      {/* Botones */}
-      <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-100">
+      {/* Botones de acción */}
+      <div className="pt-3 border-t border-stone-100 flex items-center justify-end gap-3">
         {onCancel && (
           <button
             type="button"
             onClick={onCancel}
             disabled={isSubmitting}
-            className="px-4 py-2 rounded-full border border-slate-200 text-slate-600 text-xs font-medium hover:bg-slate-50 transition"
+            className="px-4 py-2.5 rounded-full text-xs font-semibold text-stone-600 hover:bg-stone-100 transition-colors cursor-pointer"
           >
             Cancelar
           </button>
@@ -294,7 +355,7 @@ export default function AddressForm({
         <button
           type="submit"
           disabled={isSubmitting}
-          className="px-5 py-2 rounded-full bg-[#6B1F4A] hover:bg-[#531839] text-white text-xs font-medium flex items-center gap-1.5 transition shadow-2xs active:scale-95"
+          className="px-6 py-2.5 rounded-full text-xs font-semibold text-white bg-stone-900 hover:bg-stone-800 active:scale-[0.98] transition-all shadow-xs flex items-center gap-2 cursor-pointer disabled:opacity-50"
         >
           {isSubmitting ? (
             <>
@@ -302,10 +363,7 @@ export default function AddressForm({
               <span>Guardando...</span>
             </>
           ) : (
-            <>
-              <Plus className="w-3.5 h-3.5" />
-              <span>Guardar dirección</span>
-            </>
+            <span>{isEditing ? "Guardar cambios" : "Guardar dirección"}</span>
           )}
         </button>
       </div>

@@ -72,12 +72,12 @@ export default function SiteFooter() {
             </h4>
             <ul className="space-y-2.5 text-xs text-gray-400 font-light">
               <li>
-                <Link href="/ayuda/envios" className="hover:text-white transition">
+                <Link href="/ayuda?tema=envios" className="hover:text-white transition">
                   Envíos y devoluciones
                 </Link>
               </li>
               <li>
-                <Link href="/ayuda/faq" className="hover:text-white transition">
+                <Link href="/ayuda" className="hover:text-white transition">
                   Preguntas frecuentes
                 </Link>
               </li>

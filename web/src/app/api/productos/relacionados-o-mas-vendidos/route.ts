@@ -19,6 +19,7 @@ export async function GET(req: NextRequest) {
          JOIN pedido_items pi ON pi.pedido_id = ped.id 
          JOIN productos p ON p.id = pi.producto_id 
          WHERE ped.usuario_id = ? 
+           AND ped.estado NOT IN ('borrador', 'cancelado', 'pago_fallido', 'expirado')
          ORDER BY ped.creado_en DESC, pi.id DESC 
          LIMIT 1`,
         [session.userId]

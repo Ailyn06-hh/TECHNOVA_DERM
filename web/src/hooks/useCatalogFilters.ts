@@ -49,10 +49,16 @@ export function useCatalogFilters(initialCategory?: string) {
       ? precioParam.split(",").map((s) => s.trim().toLowerCase()).filter(Boolean)
       : [];
 
+    // Disponibilidad por defecto: ["recoger", "envio"] seleccionados por defecto
     const dispParam = searchParams.get("disponibilidad");
-    const disponibilidad = dispParam
-      ? dispParam.split(",").map((s) => s.trim().toLowerCase()).filter(Boolean)
-      : [];
+    let disponibilidad: string[];
+    if (dispParam === null) {
+      disponibilidad = ["recoger", "envio"];
+    } else if (dispParam === "" || dispParam === "ninguno") {
+      disponibilidad = [];
+    } else {
+      disponibilidad = dispParam.split(",").map((s) => s.trim().toLowerCase()).filter(Boolean);
+    }
 
     const orden = searchParams.get("orden") || "mas_vendidos";
     const pagina = Math.max(1, parseInt(searchParams.get("pagina") || "1", 10));
@@ -89,8 +95,18 @@ export function useCatalogFilters(initialCategory?: string) {
         params.set("precio", newFilters.precio.join(","));
       }
 
+      // Disponibilidad: Si ambas están seleccionadas (estado default), no inflar el querystring
       if (newFilters.disponibilidad.length > 0) {
-        params.set("disponibilidad", newFilters.disponibilidad.join(","));
+        const isDefault =
+          newFilters.disponibilidad.length === 2 &&
+          newFilters.disponibilidad.includes("recoger") &&
+          newFilters.disponibilidad.includes("envio");
+
+        if (!isDefault) {
+          params.set("disponibilidad", newFilters.disponibilidad.join(","));
+        }
+      } else {
+        params.set("disponibilidad", "ninguno");
       }
 
       if (newFilters.orden && newFilters.orden !== "mas_vendidos") {

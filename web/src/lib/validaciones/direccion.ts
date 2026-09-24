@@ -1,56 +1,70 @@
 export interface DireccionInput {
-  alias?: string;
-  calle: string;
-  numero_exterior: string;
+  id?: number;
+  alias: string;
+  calle_y_numero: string;
+  calle?: string;
+  numero_exterior?: string;
   numero_interior?: string | null;
   colonia: string;
   codigo_postal: string;
   ciudad: string;
   estado: string;
   referencias?: string | null;
-  predeterminada?: boolean;
+  predeterminada?: boolean | number;
 }
 
 export interface DireccionValidationResult {
   valido: boolean;
-  errores: Partial<Record<keyof DireccionInput, string>>;
+  errores: Partial<Record<keyof DireccionInput | "calle_y_numero", string>>;
 }
 
 export function validarDireccion(input: Partial<DireccionInput>): DireccionValidationResult {
-  const errores: Partial<Record<keyof DireccionInput, string>> = {};
+  const errores: Partial<Record<keyof DireccionInput | "calle_y_numero", string>> = {};
 
-  const calle = (input.calle || "").trim();
-  if (!calle) {
-    errores.calle = "La calle es obligatoria.";
-  } else if (calle.length < 2 || calle.length > 100) {
-    errores.calle = "La calle debe tener entre 2 y 100 caracteres.";
+  // Alias: obligatorio, máximo 30 caracteres
+  const alias = (input.alias || "").trim();
+  if (!alias) {
+    errores.alias = "El alias o identificador de la dirección es obligatorio (ej. Casa, Trabajo).";
+  } else if (alias.length > 30) {
+    errores.alias = "El alias no puede superar los 30 caracteres.";
   }
 
-  const numExt = (input.numero_exterior || "").trim();
-  if (!numExt) {
-    errores.numero_exterior = "El número exterior es obligatorio.";
-  } else if (numExt.length > 20) {
-    errores.numero_exterior = "El número exterior no puede superar 20 caracteres.";
+  // Calle y número: obligatorio, 5 a 120 caracteres, debe incluir al menos un número
+  let calleYNumero = (input.calle_y_numero || "").trim();
+  if (!calleYNumero && (input.calle || input.numero_exterior)) {
+    calleYNumero = `${input.calle || ""} ${input.numero_exterior || ""}`.trim();
   }
 
-  if (input.numero_interior && input.numero_interior.trim().length > 20) {
-    errores.numero_interior = "El número interior no puede superar 20 caracteres.";
+  if (!calleYNumero) {
+    errores.calle_y_numero = "La calle y número exterior son obligatorios.";
+  } else if (calleYNumero.length < 5 || calleYNumero.length > 120) {
+    errores.calle_y_numero = "La calle y número debe tener entre 5 y 120 caracteres.";
+  } else if (!/\d/.test(calleYNumero)) {
+    errores.calle_y_numero = "Por favor incluye el número exterior de tu domicilio (ej. Av. Madero 214).";
   }
 
+  // Número interior: opcional, máximo 10
+  if (input.numero_interior && input.numero_interior.trim().length > 10) {
+    errores.numero_interior = "El número interior no puede superar 10 caracteres.";
+  }
+
+  // Colonia: obligatoria
   const colonia = (input.colonia || "").trim();
   if (!colonia) {
-    errores.colonia = "La colonia es obligatoria.";
-  } else if (colonia.length < 2 || colonia.length > 100) {
-    errores.colonia = "La colonia debe tener entre 2 y 100 caracteres.";
+    errores.colonia = "La colonia o fraccionamiento es obligatoria.";
+  } else if (colonia.length > 100) {
+    errores.colonia = "La colonia no puede superar 100 caracteres.";
   }
 
+  // Código postal: 5 dígitos numéricos
   const cp = (input.codigo_postal || "").trim();
   if (!cp) {
     errores.codigo_postal = "El código postal es obligatorio.";
   } else if (!/^\d{5}$/.test(cp)) {
-    errores.codigo_postal = "El código postal debe constar de 5 dígitos numéricos.";
+    errores.codigo_postal = "El código postal debe constar de exactamente 5 dígitos numéricos.";
   }
 
+  // Ciudad / Municipio
   const ciudad = (input.ciudad || "").trim();
   if (!ciudad) {
     errores.ciudad = "La ciudad o municipio es obligatoria.";
@@ -58,6 +72,7 @@ export function validarDireccion(input: Partial<DireccionInput>): DireccionValid
     errores.ciudad = "La ciudad no puede superar 100 caracteres.";
   }
 
+  // Estado
   const estado = (input.estado || "").trim();
   if (!estado) {
     errores.estado = "El estado es obligatorio.";
@@ -65,6 +80,7 @@ export function validarDireccion(input: Partial<DireccionInput>): DireccionValid
     errores.estado = "El estado no puede superar 100 caracteres.";
   }
 
+  // Referencias: opcional, máximo 200
   if (input.referencias && input.referencias.trim().length > 200) {
     errores.referencias = "Las referencias no pueden superar los 200 caracteres.";
   }

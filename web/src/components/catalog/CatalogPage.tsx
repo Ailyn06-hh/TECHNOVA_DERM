@@ -219,13 +219,20 @@ export default function CatalogPage({ categorySlug }: CatalogPageProps) {
     });
   }
 
-  for (const d of filters.disponibilidad) {
-    activeChips.push({
-      id: `disp-${d}`,
-      group: "disponibilidad",
-      label: d === "recoger" ? "Recoger hoy" : "Para envío",
-      value: d,
-    });
+  const isDefaultDisp =
+    filters.disponibilidad.length === 2 &&
+    filters.disponibilidad.includes("recoger") &&
+    filters.disponibilidad.includes("envio");
+
+  if (!isDefaultDisp) {
+    for (const d of filters.disponibilidad) {
+      activeChips.push({
+        id: `disp-${d}`,
+        group: "disponibilidad",
+        label: d === "recoger" ? "Recoger hoy" : "Para envío",
+        value: d,
+      });
+    }
   }
 
   const hasActiveFilters = activeChips.length > 0;

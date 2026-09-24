@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { User, LogOut, Package, UserCircle, Sparkles, ChevronDown } from "lucide-react";
+import { User, LogOut, Package, UserCircle, Sparkles, ChevronDown, CreditCard } from "lucide-react";
 
 interface SessionUser {
   userId: number;
@@ -122,12 +122,21 @@ export default function UserMenu() {
             </Link>
 
             <Link
-              href="/onboarding/perfil?desde=cuenta"
+              href="/cuenta/rutina"
               onClick={() => setIsOpen(false)}
               className="flex items-center gap-2.5 px-4 py-2.5 text-xs text-gray-700 hover:bg-[#FAF7F5] hover:text-[#1A1715] transition"
             >
               <Sparkles className="w-4 h-4 text-[#6B1F4A]" />
-              <span>Mi perfil de piel</span>
+              <span>Mi rutina y favoritos</span>
+            </Link>
+
+            <Link
+              href="/cuenta/direcciones"
+              onClick={() => setIsOpen(false)}
+              className="flex items-center gap-2.5 px-4 py-2.5 text-xs text-gray-700 hover:bg-[#FAF7F5] hover:text-[#1A1715] transition"
+            >
+              <CreditCard className="w-4 h-4 text-gray-400" />
+              <span>Direcciones y pagos</span>
             </Link>
           </div>
 

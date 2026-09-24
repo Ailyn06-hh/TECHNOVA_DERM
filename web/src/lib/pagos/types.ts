@@ -77,6 +77,15 @@ export interface ProveedorPagos {
   guardarTarjeta(
     usuarioId: number,
     token: string,
-    datos: DatosTarjetaToken
+    datos: DatosTarjetaToken,
+    predeterminado?: boolean
   ): Promise<{ id: number; token: string }>;
+
+  /**
+   * Elimina de forma segura una tarjeta guardada en el proveedor y en la base de datos
+   */
+  eliminarTarjeta(
+    usuarioId: number,
+    metodoPagoId: number
+  ): Promise<boolean>;
 }

@@ -18,6 +18,7 @@ export interface CheckoutPageClientProps {
   initialDirecciones: DireccionGuardada[];
   initialMetodosPago: MetodoPagoGuardado[];
   sucursalPreferidaId?: number | null;
+  cuentaMascaraMP?: string;
 }
 
 export default function CheckoutPageClient({
@@ -26,6 +27,7 @@ export default function CheckoutPageClient({
   initialDirecciones,
   initialMetodosPago,
   sucursalPreferidaId,
+  cuentaMascaraMP,
 }: CheckoutPageClientProps) {
   const router = useRouter();
   const { refreshCart } = useCarrito();
@@ -268,6 +270,11 @@ export default function CheckoutPageClient({
     }
   };
 
+  const handleNewCardChange = useCallback((c: NewCardData | null) => {
+    setNewCardData(c);
+    setErrorMessage(null);
+  }, []);
+
   return (
     <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 lg:gap-12 items-start">
@@ -303,10 +310,8 @@ export default function CheckoutPageClient({
               setSelectedCardId(id);
               setErrorMessage(null);
             }}
-            onNewCardChange={(c) => {
-              setNewCardData(c);
-              setErrorMessage(null);
-            }}
+            onNewCardChange={handleNewCardChange}
+            cuentaMascaraMP={cuentaMascaraMP}
           />
         </div>
 

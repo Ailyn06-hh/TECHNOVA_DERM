@@ -22,9 +22,9 @@ export async function getSucursalRecogerHoy(
 ): Promise<SucursalInfo> {
   const pool = getDbPool();
 
-  // 1. Obtener primera sucursal activa como fallback garantizado
+  // 1. Obtener primera sucursal activa de tipo tienda como fallback garantizado
   const [firstRows]: any = await pool.execute(
-    "SELECT id, nombre, direccion FROM sucursales WHERE activa = 1 ORDER BY id ASC LIMIT 1"
+    "SELECT id, nombre, direccion FROM sucursales WHERE activa = 1 AND tipo != 'bodega' ORDER BY id ASC LIMIT 1"
   );
   const fallbackSucursal: SucursalInfo =
     firstRows && firstRows.length > 0
@@ -47,7 +47,7 @@ export async function getSucursalRecogerHoy(
       `SELECT s.id, s.nombre, s.direccion 
        FROM usuarios u
        JOIN sucursales s ON s.id = u.sucursal_preferida_id
-       WHERE u.id = ? AND s.activa = 1
+       WHERE u.id = ? AND s.activa = 1 AND s.tipo != 'bodega'
        LIMIT 1`,
       [userId]
     );
@@ -77,7 +77,7 @@ export async function getSucursalRecogerHoy(
   if (cookieSucursalId && !isNaN(Number(cookieSucursalId))) {
     const sId = Number(cookieSucursalId);
     const [cookieRows]: any = await pool.execute(
-      "SELECT id, nombre, direccion FROM sucursales WHERE id = ? AND activa = 1 LIMIT 1",
+      "SELECT id, nombre, direccion FROM sucursales WHERE id = ? AND activa = 1 AND tipo != 'bodega' LIMIT 1",
       [sId]
     );
 

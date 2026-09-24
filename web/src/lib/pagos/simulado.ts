@@ -113,20 +113,30 @@ export class ProveedorSimulado implements ProveedorPagos {
   async guardarTarjeta(
     usuarioId: number,
     token: string,
-    datos: DatosTarjetaToken
+    datos: DatosTarjetaToken,
+    predeterminado: boolean = true
   ): Promise<{ id: number; token: string }> {
     const pool = getDbPool();
 
-    // Desmarcar otras predeterminadas si esta es nueva
-    await pool.execute(
-      "UPDATE metodos_pago SET predeterminado = 0 WHERE usuario_id = ?",
+    // Contar cuántas tarjetas tiene el usuario
+    const [countRows]: any = await pool.execute(
+      "SELECT COUNT(*) as total FROM metodos_pago WHERE usuario_id = ?",
       [usuarioId]
     );
+    const esPrimera = Number(countRows[0]?.total || 0) === 0;
+    const debeSerPredeterminada = predeterminado || esPrimera;
+
+    if (debeSerPredeterminada) {
+      await pool.execute(
+        "UPDATE metodos_pago SET predeterminado = 0 WHERE usuario_id = ?",
+        [usuarioId]
+      );
+    }
 
     const [res]: any = await pool.execute(
       `INSERT INTO metodos_pago 
        (usuario_id, proveedor, token_proveedor, marca, ultimos4, titular, mes_vencimiento, anio_vencimiento, predeterminado, creado_en)
-       VALUES (?, 'simulado', ?, ?, ?, ?, ?, ?, 1, NOW())`,
+       VALUES (?, 'simulado', ?, ?, ?, ?, ?, ?, ?, NOW())`,
       [
         usuarioId,
         token,
@@ -135,6 +145,7 @@ export class ProveedorSimulado implements ProveedorPagos {
         datos.titular,
         datos.mesVencimiento,
         datos.anioVencimiento,
+        debeSerPredeterminada ? 1 : 0,
       ]
     );
 
@@ -142,5 +153,52 @@ export class ProveedorSimulado implements ProveedorPagos {
       id: res.insertId,
       token,
     };
+  }
+
+  async eliminarTarjeta(
+    usuarioId: number,
+    metodoPagoId: number
+  ): Promise<boolean> {
+    const pool = getDbPool();
+
+    const [rows]: any = await pool.execute(
+      "SELECT id, predeterminado FROM metodos_pago WHERE id = ? AND usuario_id = ? LIMIT 1",
+      [metodoPagoId, usuarioId]
+    );
+
+    if (!rows || rows.length === 0) {
+      return false;
+    }
+
+    const eraPredeterminado = rows[0].predeterminado === 1;
+
+    await pool.execute(
+      "DELETE FROM metodos_pago WHERE id = ? AND usuario_id = ?",
+      [metodoPagoId, usuarioId]
+    );
+
+    // Si era la predeterminada, la siguiente tarjeta vigente pasa a serlo
+    if (eraPredeterminado) {
+      const now = new Date();
+      const currentYear = now.getFullYear();
+      const currentMonth = now.getMonth() + 1;
+
+      const [nextCards]: any = await pool.execute(
+        `SELECT id FROM metodos_pago 
+         WHERE usuario_id = ? 
+           AND (anio_vencimiento > ? OR (anio_vencimiento = ? AND mes_vencimiento >= ?))
+         ORDER BY id DESC LIMIT 1`,
+        [usuarioId, currentYear, currentYear, currentMonth]
+      );
+
+      if (nextCards && nextCards.length > 0) {
+        await pool.execute(
+          "UPDATE metodos_pago SET predeterminado = 1 WHERE id = ?",
+          [nextCards[0].id]
+        );
+      }
+    }
+
+    return true;
   }
 }

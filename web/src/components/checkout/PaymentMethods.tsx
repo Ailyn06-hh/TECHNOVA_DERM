@@ -15,6 +15,7 @@ export interface PaymentMethodsProps {
   selectedCardId: number | "nueva";
   onSelectCardId: (id: number | "nueva") => void;
   onNewCardChange: (cardData: NewCardData | null) => void;
+  cuentaMascaraMP?: string;
 }
 
 export default function PaymentMethods({
@@ -25,6 +26,7 @@ export default function PaymentMethods({
   selectedCardId,
   onSelectCardId,
   onNewCardChange,
+  cuentaMascaraMP,
 }: PaymentMethodsProps) {
   const isPagarEnTiendaDisabled = tipoEntrega === "envio";
 
@@ -123,6 +125,13 @@ export default function PaymentMethods({
             <p className="font-medium text-slate-800 text-sm">
               Te llevaremos a Mercado Pago para completar el pago.
             </p>
+            {cuentaMascaraMP && (
+              <div className="inline-block my-1">
+                <span className="px-3 py-1 rounded-full text-xs font-semibold bg-sky-50 text-sky-800 border border-sky-200">
+                  Conectado como {cuentaMascaraMP}
+                </span>
+              </div>
+            )}
             <p className="font-light text-slate-500 max-w-sm mx-auto">
               Puedes pagar con saldo en cuenta, tarjetas de crédito/débito o transferencias SPEI. Al finalizar serás redirigido automáticamente.
             </p>

@@ -2,7 +2,7 @@
 
 import React, { useState } from "react";
 import Link from "next/link";
-import { ShoppingBag, Loader2, AlertCircle, Sparkles } from "lucide-react";
+import { ShoppingBag, Loader2, AlertCircle, Sparkles, Bookmark, BookmarkCheck } from "lucide-react";
 import { formatearPrecio } from "@/lib/formato";
 import { useCarrito } from "@/contexts/CarritoContext";
 import ProductThumb from "./ProductThumb";
@@ -23,6 +23,8 @@ export default function RoutineCard({
 }: RoutineCardProps) {
   const { refreshCart, showToast } = useCarrito();
   const [isAdding, setIsAdding] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [isSaved, setIsSaved] = useState(false);
 
   const {
     clave,
@@ -36,6 +38,54 @@ export default function RoutineCard({
     totalOriginal,
     totalConDescuento,
   } = rutina;
+
+  const handleGuardarRutina = async () => {
+    if (isSaving || isSaved) return;
+    setIsSaving(true);
+    try {
+      const res = await fetch("/api/cuenta/rutinas", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          plantillaClave: clave,
+          tipoPiel: rutina.tipoPiel || "mixta",
+          productoIds: productos.map((p) => p.id),
+        }),
+      });
+
+      if (res.status === 401) {
+        window.location.href = `/login?volver=/rutinas`;
+        return;
+      }
+
+      const data = await res.json();
+      if (!res.ok) {
+        showToast({
+          message: data.message || data.error || "No se pudo guardar la rutina.",
+          type: "error",
+        });
+        return;
+      }
+
+      setIsSaved(true);
+      showToast({
+        message: "Rutina guardada en tu cuenta",
+        type: "success",
+        linkHref: "/cuenta",
+        linkLabel: "Ver en mi cuenta",
+      });
+      if (onAnnounce) {
+        onAnnounce("Rutina guardada en tu cuenta con éxito.");
+      }
+    } catch {
+      showToast({
+        message: "Error de red al guardar la rutina.",
+        type: "error",
+      });
+    } finally {
+      setIsSaving(false);
+    }
+  };
 
   const handleAgregarRutina = async () => {
     if (!disponible || isAdding) return;
@@ -185,30 +235,59 @@ export default function RoutineCard({
           )}
         </div>
 
-        <button
-          onClick={handleAgregarRutina}
-          disabled={!disponible || isAdding}
-          aria-label={ariaBoton}
-          className={`w-full py-3.5 px-5 rounded-full text-xs sm:text-sm font-medium flex items-center justify-center gap-2 transition-all shadow-sm ${
-            !disponible
-              ? "bg-slate-100 text-slate-400 cursor-not-allowed border border-slate-200"
-              : "bg-[#6B1F4A] hover:bg-[#531839] text-white hover:shadow active:scale-[0.98]"
-          }`}
-        >
-          {isAdding ? (
-            <>
-              <Loader2 className="w-4 h-4 animate-spin" />
-              <span>Agregando rutina...</span>
-            </>
-          ) : !disponible ? (
-            <span>No disponible hoy</span>
-          ) : (
-            <>
-              <ShoppingBag className="w-4 h-4" />
-              <span>Agregar rutina</span>
-            </>
-          )}
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleAgregarRutina}
+            disabled={!disponible || isAdding}
+            aria-label={ariaBoton}
+            className={`flex-1 py-3.5 px-5 rounded-full text-xs sm:text-sm font-medium flex items-center justify-center gap-2 transition-all shadow-sm ${
+              !disponible
+                ? "bg-slate-100 text-slate-400 cursor-not-allowed border border-slate-200"
+                : "bg-[#6B1F4A] hover:bg-[#531839] text-white hover:shadow active:scale-[0.98]"
+            }`}
+          >
+            {isAdding ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                <span>Agregando rutina...</span>
+              </>
+            ) : !disponible ? (
+              <span>No disponible hoy</span>
+            ) : (
+              <>
+                <ShoppingBag className="w-4 h-4" />
+                <span>Agregar rutina</span>
+              </>
+            )}
+          </button>
+
+          <button
+            type="button"
+            onClick={handleGuardarRutina}
+            disabled={isSaving || isSaved}
+            title={isSaved ? "Rutina guardada" : "Guardar rutina"}
+            aria-label={isSaved ? "Rutina guardada" : "Guardar rutina"}
+            className={`py-3.5 px-4 rounded-full text-xs sm:text-sm font-medium flex items-center justify-center gap-1.5 transition-all border shrink-0 ${
+              isSaved
+                ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                : "bg-white text-slate-700 border-slate-200 hover:border-[#6B1F4A] hover:text-[#6B1F4A] active:scale-[0.98]"
+            }`}
+          >
+            {isSaving ? (
+              <Loader2 className="w-4 h-4 animate-spin text-slate-400" />
+            ) : isSaved ? (
+              <>
+                <BookmarkCheck className="w-4 h-4 text-emerald-600" />
+                <span className="hidden sm:inline">Guardada</span>
+              </>
+            ) : (
+              <>
+                <Bookmark className="w-4 h-4" />
+                <span className="hidden sm:inline">Guardar</span>
+              </>
+            )}
+          </button>
+        </div>
       </div>
     </article>
   );

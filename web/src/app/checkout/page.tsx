@@ -38,7 +38,7 @@ export default async function CheckoutRoute() {
 
   // 3. Consultar direcciones guardadas
   const [dirRows]: any = await pool.execute(
-    `SELECT id, usuario_id, alias, calle, numero_exterior, numero_interior, colonia, 
+    `SELECT id, usuario_id, alias, calle_y_numero, calle, numero_exterior, numero_interior, colonia, 
             codigo_postal, ciudad, estado, referencias, predeterminada 
      FROM direcciones 
      WHERE usuario_id = ? 
@@ -46,16 +46,33 @@ export default async function CheckoutRoute() {
     [user.userId]
   );
 
-  // 4. Consultar métodos de pago guardados
+  const direccionesNormalizadas = (dirRows || []).map((r: any) => ({
+    ...r,
+    calle_y_numero: r.calle_y_numero || `${r.calle || ""} ${r.numero_exterior || ""}`.trim(),
+  }));
+
+  // 4. Consultar métodos de pago guardados (solo vigentes para checkout)
+  const now = new Date();
+  const curYear = now.getFullYear();
+  const curMonth = now.getMonth() + 1;
+
   const [cardRows]: any = await pool.execute(
     `SELECT id, proveedor, marca, ultimos4, titular, mes_vencimiento, anio_vencimiento, predeterminado 
      FROM metodos_pago 
-     WHERE usuario_id = ? 
+     WHERE usuario_id = ?
+       AND (anio_vencimiento > ? OR (anio_vencimiento = ? AND mes_vencimiento >= ?))
      ORDER BY predeterminado DESC, id DESC`,
-    [user.userId]
+    [user.userId, curYear, curYear, curMonth]
   );
 
-  // 5. Consultar sucursales activas y calcular existencias de la orden
+  // 5. Consultar cuenta vinculada de Mercado Pago si existe
+  const [vincRows]: any = await pool.execute(
+    "SELECT cuenta_mascara FROM cuentas_vinculadas WHERE usuario_id = ? AND proveedor = 'mercadopago' LIMIT 1",
+    [user.userId]
+  );
+  const cuentaMascaraMP = vincRows && vincRows.length > 0 ? vincRows[0].cuenta_mascara : undefined;
+
+  // 6. Consultar sucursales activas y calcular existencias de la orden
   const [sucRows]: any = await pool.execute(
     `SELECT id, nombre, direccion, direccion_corta, hora_apertura, hora_cierre, minutos_preparacion 
      FROM sucursales 
@@ -66,8 +83,6 @@ export default async function CheckoutRoute() {
   const distinctProductIds = Array.from(
     new Set(carrito.items.map((i) => i.producto_id).filter(Boolean))
   );
-
-  const now = new Date();
 
   const sucursalesCalculadas: SucursalCalculada[] = await Promise.all(
     (sucRows || []).map(async (suc: any) => {
@@ -160,9 +175,10 @@ export default async function CheckoutRoute() {
       <CheckoutPageClient
         initialCarrito={carrito}
         initialSucursales={sucursalesCalculadas}
-        initialDirecciones={dirRows || []}
+        initialDirecciones={direccionesNormalizadas}
         initialMetodosPago={cardRows || []}
         sucursalPreferidaId={sucursalPreferidaId}
+        cuentaMascaraMP={cuentaMascaraMP}
       />
     </CheckoutLayout>
   );

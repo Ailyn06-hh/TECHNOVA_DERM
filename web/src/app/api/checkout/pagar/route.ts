@@ -7,6 +7,7 @@ import { liberarReservasVencidas } from "@/lib/reservas";
 import { notificarWhatsAppPedidoListo, enviarConfirmacionPedido } from "@/lib/notificaciones";
 import { COSTO_ENVIO, ENVIO_GRATIS_DESDE, PREFIJO_FOLIO } from "@/lib/marca";
 import { cambiarEstado, generarCodigoRecogida } from "@/lib/pedidos";
+import { descontarInventario, regresarInventario } from "@/lib/inventario";
 
 export const dynamic = "force-dynamic";
 
@@ -186,19 +187,16 @@ export async function POST(req: NextRequest) {
           }
         }
 
-        // Descontar en la sucursal
+        // Descontar en la sucursal (FEFO)
         for (const item of carrito.items) {
-          await conn.execute(
-            `UPDATE inventario 
-             SET existencias = existencias - ? 
-             WHERE producto_id = ? AND sucursal_id = ? 
-             LIMIT 1`,
-            [item.cantidad, item.producto_id, sucursal_id]
-          );
+          if (item.producto_id) {
+            await descontarInventario(conn, item.producto_id, sucursal_id || 1, item.cantidad);
+          }
         }
       } else {
-        // Para envío a domicilio: descontar de la sucursal con mayor existencias
+        // Para envío a domicilio: descontar de la sucursal con mayor existencias (FEFO)
         for (const item of carrito.items) {
+          if (!item.producto_id) continue;
           const matching = (invRows || [])
             .filter((r: any) => Number(r.producto_id) === item.producto_id && Number(r.existencias) >= item.cantidad)
             .sort((a: any, b: any) => Number(b.existencias) - Number(a.existencias));
@@ -216,13 +214,7 @@ export async function POST(req: NextRequest) {
           }
 
           const selectedBranchId = matching[0].sucursal_id;
-          await conn.execute(
-            `UPDATE inventario 
-             SET existencias = existencias - ? 
-             WHERE producto_id = ? AND sucursal_id = ? 
-             LIMIT 1`,
-            [item.cantidad, item.producto_id, selectedBranchId]
-          );
+          await descontarInventario(conn, item.producto_id, selectedBranchId, item.cantidad);
         }
       }
 
@@ -450,6 +442,29 @@ export async function POST(req: NextRequest) {
           conn
         );
 
+        // Copiar marca y últimos 4 dígitos en el pedido
+        let marcaTarjeta = "Tarjeta";
+        let ultimos4Tarjeta = "0000";
+        if (id_tarjeta_guardada) {
+          const [savedCard]: any = await conn.execute(
+            "SELECT marca, ultimos_cuatro FROM metodos_pago WHERE id = ? AND usuario_id = ? LIMIT 1",
+            [id_tarjeta_guardada, session.userId]
+          );
+          if (savedCard?.[0]) {
+            marcaTarjeta = savedCard[0].marca || "Tarjeta";
+            ultimos4Tarjeta = savedCard[0].ultimos_cuatro || "0000";
+          }
+        } else if (datos_tarjeta_nueva) {
+          marcaTarjeta = datos_tarjeta_nueva.marca || "Tarjeta";
+          const rawNum = String(datos_tarjeta_nueva.numero || "").replace(/\s/g, "");
+          ultimos4Tarjeta = rawNum.slice(-4) || "0000";
+        }
+
+        await conn.execute(
+          "UPDATE pedidos SET pago_marca = ?, pago_ultimos4 = ? WHERE id = ?",
+          [marcaTarjeta, ultimos4Tarjeta, pedidoId]
+        );
+
         await conn.execute(
           `INSERT INTO pagos (pedido_id, proveedor, referencia_proveedor, estado, monto, detalle_json, creado_en)
            VALUES (?, ?, ?, 'aprobado', ?, ?, NOW())`,
@@ -482,16 +497,12 @@ export async function POST(req: NextRequest) {
         });
       } else {
         // Cobro rechazado o fondos insuficientes:
-        // Regresar el inventario reservado
+        // Regresar el inventario reservado (FEFO)
+        const branchForReturn = sucursal_id || 1;
         for (const item of carrito.items) {
-          await conn.execute(
-            `UPDATE inventario 
-             SET existencias = existencias + ? 
-             WHERE producto_id = ? 
-             ORDER BY existencias ASC 
-             LIMIT 1`,
-            [item.cantidad, item.producto_id]
-          );
+          if (item.producto_id) {
+            await regresarInventario(conn, item.producto_id, branchForReturn, item.cantidad);
+          }
         }
 
         await cambiarEstado(

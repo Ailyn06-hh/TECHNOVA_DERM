@@ -6,14 +6,18 @@ import { Loader2 } from "lucide-react";
 interface LoadMoreButtonProps {
   isLoading: boolean;
   onClick: () => void;
+  label?: string;
+  loadingLabel?: string;
 }
 
 export default function LoadMoreButton({
   isLoading,
   onClick,
+  label = "Ver más productos",
+  loadingLabel = "Cargando...",
 }: LoadMoreButtonProps) {
   return (
-    <div className="flex justify-center mt-12 mb-6">
+    <div className="flex justify-center mt-10 mb-6">
       <button
         type="button"
         onClick={onClick}
@@ -23,10 +27,10 @@ export default function LoadMoreButton({
         {isLoading ? (
           <>
             <Loader2 className="w-4 h-4 text-[#6B1F4A] animate-spin" />
-            <span>Cargando productos...</span>
+            <span>{loadingLabel}</span>
           </>
         ) : (
-          <span>Ver más productos</span>
+          <span>{label}</span>
         )}
       </button>
     </div>

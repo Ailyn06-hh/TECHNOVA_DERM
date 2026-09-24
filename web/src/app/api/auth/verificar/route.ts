@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { getDbPool } from "@/lib/db";
 import { decodePendingUser, PENDING_COOKIE_NAME } from "@/lib/auth-verification";
+import { vincularPedidosInvitado } from "@/lib/pedidos";
 
 export async function POST(req: NextRequest) {
   try {
@@ -135,6 +136,19 @@ export async function POST(req: NextRequest) {
       "UPDATE usuarios SET verificado = 1 WHERE id = ?",
       [pendingUser.userId]
     );
+
+    // 7.1 Vincular compras previas hechas como invitada (cierra el TODO del registro)
+    try {
+      const [userRows]: any = await pool.execute(
+        "SELECT id, correo, celular FROM usuarios WHERE id = ?",
+        [pendingUser.userId]
+      );
+      if (userRows && userRows.length > 0) {
+        await vincularPedidosInvitado(userRows[0], pool);
+      }
+    } catch (linkErr) {
+      console.error("[VINCULAR PEDIDOS INVITADO ERROR]:", linkErr);
+    }
 
     // 8. Crear respuesta exitosa y limpiar la cookie de verificación pendiente
     const response = NextResponse.json(
