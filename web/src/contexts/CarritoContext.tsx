@@ -5,9 +5,12 @@ import React, { createContext, useContext, useState, useEffect, useCallback } fr
 export interface ToastData {
   id: string;
   message: string;
-  type: "success" | "error";
+  type: "success" | "error" | "info";
   linkHref?: string;
   linkLabel?: string;
+  actionLabel?: string;
+  onAction?: () => void;
+  duration?: number;
 }
 
 interface CarritoContextType {
@@ -40,9 +43,10 @@ export function CarritoProvider({ children }: { children: React.ReactNode }) {
       const id = Math.random().toString(36).substring(2, 9);
       setToasts((prev) => [...prev, { ...toast, id }]);
 
+      const timeout = toast.duration ?? 5000;
       setTimeout(() => {
         removeToast(id);
-      }, 5000);
+      }, timeout);
     },
     [removeToast]
   );
@@ -92,7 +96,7 @@ export function CarritoProvider({ children }: { children: React.ReactNode }) {
       showToast({
         message: "Agregado a tu bolsa",
         type: "success",
-        linkHref: "/cart",
+        linkHref: "/carrito",
         linkLabel: "Ver bolsa",
       });
 

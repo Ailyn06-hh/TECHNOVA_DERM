@@ -1,16 +1,25 @@
-import React from "react";
-import StoreLayout from "@/components/layout/StoreLayout";
+import { redirect } from "next/navigation";
+import { getAuthUserServer } from "@/lib/session";
+import { getDbPool } from "@/lib/db";
 
-export default function MiRutinaPage() {
-  // TODO: Implementar vista detallada y agregar la rutina completa al carrito
-  return (
-    <StoreLayout>
-      <div className="max-w-7xl mx-auto px-4 py-16 text-center">
-        <h1 className="font-serif text-3xl font-medium text-[#1A1715] mb-3">Mi Rutina Personalizada</h1>
-        <p className="text-gray-500 text-sm font-light">
-          Próximamente: Añade los 3 pasos de tu rutina recomendada con 10% de descuento en un solo clic.
-        </p>
-      </div>
-    </StoreLayout>
+export const dynamic = "force-dynamic";
+
+export default async function MiRutinaPage() {
+  const sessionUser = getAuthUserServer();
+
+  if (!sessionUser?.userId) {
+    redirect("/rutinas");
+  }
+
+  const pool = getDbPool();
+  const [profileRows]: any = await pool.execute(
+    "SELECT tipo_piel FROM perfiles_piel WHERE usuario_id = ? LIMIT 1",
+    [sessionUser.userId]
   );
+
+  if (profileRows && profileRows.length > 0 && profileRows[0].tipo_piel) {
+    redirect(`/rutinas?piel=${profileRows[0].tipo_piel}`);
+  }
+
+  redirect("/rutinas");
 }

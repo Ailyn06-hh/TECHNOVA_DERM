@@ -9,6 +9,7 @@ interface QuantitySelectorProps {
   min?: number;
   onChange: (newQuantity: number) => void;
   disabled?: boolean;
+  ariaLabel?: string;
 }
 
 export default function QuantitySelector({
@@ -17,6 +18,7 @@ export default function QuantitySelector({
   min = 1,
   onChange,
   disabled = false,
+  ariaLabel,
 }: QuantitySelectorProps) {
   const handleDecrement = () => {
     if (quantity > min && !disabled) {
@@ -72,7 +74,7 @@ export default function QuantitySelector({
         min={min}
         max={max}
         disabled={disabled}
-        aria-label="Cantidad seleccionada"
+        aria-label={ariaLabel || "Cantidad seleccionada"}
         className="w-10 text-center text-xs font-semibold text-slate-800 bg-transparent focus:outline-none [-moz-appearance:textfield] [&::-webkit-outer-spin-button]:m-0 [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:m-0 [&::-webkit-inner-spin-button]:appearance-none"
       />
 

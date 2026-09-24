@@ -111,7 +111,7 @@ export default function CompleteRoutine({ rutinaData }: CompleteRoutineProps) {
       showToast({
         message: data.message || "Rutina agregada a tu bolsa",
         type: "success",
-        linkHref: "/cart",
+        linkHref: "/carrito",
         linkLabel: "Ver bolsa",
       });
     } catch {

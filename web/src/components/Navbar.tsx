@@ -24,7 +24,7 @@ export default function Navbar() {
     { href: "/", label: "Tienda E-Commerce", icon: ShoppingBag, badge: "Canal Web" },
     { href: "/pos", label: "Terminal POS", icon: Store, badge: "Mostrador Físico" },
     { href: "/admin", label: "Cerebro MiPyME (ML & Precios)", icon: LineChart, badge: "Inteligencia Central" },
-    { href: "/cart", label: "Carrito Omnicanal", icon: Sparkles, badge: null },
+    { href: "/carrito", label: "Carrito Omnicanal", icon: Sparkles, badge: null },
   ];
 
   return (

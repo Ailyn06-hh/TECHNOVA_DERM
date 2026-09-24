@@ -28,17 +28,31 @@ export default function ToastContainer() {
           <div className="flex items-center gap-2.5 mr-3">
             {toast.type === "success" ? (
               <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+            ) : toast.type === "info" ? (
+              <CheckCircle2 className="w-4 h-4 text-amber-300 shrink-0" />
             ) : (
               <AlertCircle className="w-4 h-4 text-rose-300 shrink-0" />
             )}
-            <span>{toast.message}</span>
+            <span className="leading-snug">{toast.message}</span>
           </div>
 
-          <div className="flex items-center gap-2 shrink-0">
+          <div className="flex items-center gap-2.5 shrink-0">
+            {toast.actionLabel && toast.onAction && (
+              <button
+                type="button"
+                onClick={() => {
+                  toast.onAction?.();
+                  removeToast(toast.id);
+                }}
+                className="underline text-amber-300 font-semibold hover:text-amber-200 transition text-xs sm:text-sm cursor-pointer whitespace-nowrap"
+              >
+                {toast.actionLabel}
+              </button>
+            )}
             {toast.linkHref && (
               <Link
                 href={toast.linkHref}
-                className="underline text-white font-semibold hover:text-white/80 transition"
+                className="underline text-white font-semibold hover:text-white/80 transition whitespace-nowrap"
               >
                 {toast.linkLabel || "Ver"}
               </Link>

@@ -28,12 +28,25 @@ export default function SiteHeader() {
     checkAuth();
   }, []);
 
+  const [currentHash, setCurrentHash] = useState("");
+
+  useEffect(() => {
+    const updateHash = () => {
+      if (typeof window !== "undefined") {
+        setCurrentHash(window.location.hash);
+      }
+    };
+    updateHash();
+    window.addEventListener("hashchange", updateHash);
+    return () => window.removeEventListener("hashchange", updateHash);
+  }, [pathname]);
+
   const navLinks = [
     { label: "Rutinas", href: "/rutinas", isSpecial: false },
     { label: "Limpieza", href: "/categoria/limpieza", isSpecial: false },
     { label: "Hidratación", href: "/categoria/hidratacion", isSpecial: false },
     { label: "Protección solar", href: "/categoria/proteccion-solar", isSpecial: false },
-    { label: "Combos", href: "/combos", isSpecial: true },
+    { label: "Combos", href: "/rutinas#combos", isSpecial: true },
   ];
 
   return (
@@ -55,7 +68,14 @@ export default function SiteHeader() {
           {/* 2. Menú de Navegación Principal */}
           <nav className="hidden md:flex items-center gap-6 lg:gap-8">
             {navLinks.map((link) => {
-              const isActive = pathname === link.href;
+              let isActive = false;
+              if (link.label === "Combos") {
+                isActive = pathname === "/rutinas" && currentHash === "#combos";
+              } else if (link.label === "Rutinas") {
+                isActive = pathname === "/rutinas" && currentHash !== "#combos";
+              } else {
+                isActive = pathname === link.href;
+              }
 
               if (link.isSpecial) {
                 return (

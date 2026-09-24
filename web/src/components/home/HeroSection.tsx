@@ -72,12 +72,12 @@ export default function HeroSection() {
                 <ArrowRight className="w-4 h-4" />
               </Link>
 
-              <a
-                href="#combos"
+              <Link
+                href="/rutinas#combos"
                 className="inline-flex items-center gap-2 px-6 py-3 rounded-full bg-white hover:bg-slate-50 text-slate-700 text-sm font-medium border border-slate-200 transition-all active:scale-[0.98]"
               >
                 <span>Ver combos de la semana</span>
-              </a>
+              </Link>
             </div>
 
             {/* Sellos de confianza */}

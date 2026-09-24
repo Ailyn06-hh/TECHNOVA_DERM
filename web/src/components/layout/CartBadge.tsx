@@ -10,7 +10,7 @@ export default function CartBadge() {
 
   return (
     <Link
-      href="/cart"
+      href="/carrito"
       aria-label={`Bolsa de compras con ${cartCount} ${cartCount === 1 ? "artículo" : "artículos"}`}
       className="relative p-2 rounded-full text-gray-700 hover:text-[#1A1715] hover:bg-black/5 transition focus:outline-none focus:ring-2 focus:ring-[#6B1F4A]"
     >

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import crypto from "crypto";
 import { getOrCreateCart } from "@/lib/carrito";
 import { getDbPool } from "@/lib/db";
 
@@ -6,8 +7,16 @@ export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {
   try {
-    const body = await req.json();
-    const { producto_id, combo_id, cantidad = 1 } = body;
+    const body = await req.json().catch(() => ({}));
+    const {
+      producto_id,
+      combo_id,
+      cantidad = 1,
+      grupo_id,
+      grupo_tipo,
+      grupo_clave,
+      descuento_porcentaje,
+    } = body;
 
     const requestedQty = Math.max(1, Number(cantidad) || 1);
 
@@ -81,17 +90,25 @@ export async function POST(req: NextRequest) {
       } else {
         await pool.execute(
           `INSERT INTO carrito_items 
-            (carrito_id, producto_id, combo_id, cantidad, precio_unitario_al_agregar) 
-           VALUES (?, ?, NULL, ?, ?)`,
-          [cartId, pId, requestedQty, precioUnitario]
+            (carrito_id, producto_id, combo_id, cantidad, precio_unitario_al_agregar, grupo_id, grupo_tipo, grupo_clave, descuento_porcentaje) 
+           VALUES (?, ?, NULL, ?, ?, ?, ?, ?, ?)`,
+          [
+            cartId,
+            pId,
+            requestedQty,
+            precioUnitario,
+            grupo_id || null,
+            grupo_tipo || null,
+            grupo_clave || null,
+            descuento_porcentaje ? Number(descuento_porcentaje) : null,
+          ]
         );
       }
-    } else if (combo_id) {
       // 2. Agregar Combo
       const cId = Number(combo_id);
 
       const [comboRows]: any = await pool.execute(
-        "SELECT id, nombre, descuento_porcentaje, activo FROM combos WHERE id = ? LIMIT 1",
+        "SELECT id, nombre, slug, descuento_porcentaje, activo FROM combos WHERE id = ? LIMIT 1",
         [cId]
       );
 
@@ -161,11 +178,12 @@ export async function POST(req: NextRequest) {
           [requestedQty, precioUnitarioCombo, existingComboRows[0].id]
         );
       } else {
+        const grupoId = crypto.randomUUID();
         await pool.execute(
           `INSERT INTO carrito_items 
-            (carrito_id, producto_id, combo_id, cantidad, precio_unitario_al_agregar) 
-           VALUES (?, NULL, ?, ?, ?)`,
-          [cartId, cId, requestedQty, precioUnitarioCombo]
+            (carrito_id, producto_id, combo_id, cantidad, precio_unitario_al_agregar, grupo_id, grupo_tipo, grupo_clave, descuento_porcentaje) 
+           VALUES (?, NULL, ?, ?, ?, ?, 'combo', ?, ?)`,
+          [cartId, cId, requestedQty, precioUnitarioCombo, grupoId, combo.slug || String(cId), descuentoPct]
         );
       }
     }

@@ -51,7 +51,7 @@ export default function CombosSection() {
           </div>
 
           <Link
-            href="/combos"
+            href="/rutinas#combos"
             className="inline-flex items-center gap-1.5 text-xs font-medium text-[#6B1F4A] hover:text-[#531839] group transition-colors shrink-0"
           >
             <span>Ver todos los combos</span>
@@ -87,6 +87,8 @@ export default function CombosSection() {
                 precio_original={combo.precio_original}
                 precio_final={combo.precio_final}
                 agotado={combo.agotado}
+                vigencia_texto={combo.vigencia_texto}
+                esIdealParaTuPiel={combo.esIdealParaTuPiel}
                 productos={combo.productos}
               />
             ))}
