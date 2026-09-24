@@ -1,0 +1,146 @@
+/**
+ * Lista de más de 100 contraseñas comunes, predecibles o filtradas frecuentemente.
+ * Se almacenan en minúsculas para comparaciones insensibles a mayúsculas.
+ */
+
+export const CONTRASENAS_COMUNES = new Set([
+  // Patrones globales clásicos
+  "12345678",
+  "123456789",
+  "1234567890",
+  "password",
+  "password1",
+  "password123",
+  "pass1234",
+  "qwerty123",
+  "qwertyuiop",
+  "qwertz123",
+  "admin123",
+  "administrator",
+  "welcome1",
+  "welcome123",
+  "login123",
+  "user1234",
+  "changeit",
+  "changeme",
+  "default1",
+  "test1234",
+  "master123",
+  "secret123",
+  "secreto1",
+  "secreto123",
+
+  // Variantes en español
+  "contrasena",
+  "contraseña",
+  "contrasena1",
+  "contraseña1",
+  "contrasena123",
+  "contraseña123",
+  "clave123",
+  "clave1234",
+  "acceso123",
+  "entrar123",
+
+  // Nombres y lugares populares en México y Latinoamérica
+  "mexico2020",
+  "mexico2021",
+  "mexico2022",
+  "mexico2023",
+  "mexico2024",
+  "mexico2025",
+  "mexico2026",
+  "mexico123",
+  "mexico1234",
+  "vivamexico",
+  "guadalajara",
+  "monterrey",
+  "aguascalientes",
+  "cancun2024",
+  "america123",
+  "chivas123",
+  "cruzazul1",
+  "pumas1234",
+  "tigres123",
+
+  // Palabras afectivas y nombres comunes
+  "tequiero1",
+  "tequiero123",
+  "iloveyou1",
+  "iloveyou123",
+  "familia1",
+  "familia123",
+  "princesa1",
+  "princesa123",
+  "corazon1",
+  "corazon123",
+  "miamor123",
+  "bebe1234",
+  "bebecita1",
+  "mama1234",
+  "papa1234",
+  "hermano1",
+  "hermana1",
+  "santiago1",
+  "sebastian1",
+  "alejandro1",
+  "fernando1",
+  "mariana123",
+  "valentina1",
+  "camila123",
+  "patricia1",
+  "carlos123",
+
+  // Cultura pop, animales y naturaleza
+  "estrella1",
+  "estrella123",
+  "mariposa1",
+  "mariposa123",
+  "solyluna1",
+  "chocolate1",
+  "superman1",
+  "batman123",
+  "dragon123",
+  "pokemon123",
+  "futbol123",
+  "campeon1",
+  "campeon123",
+  "ganador1",
+  "dinero123",
+  "riqueza1",
+
+  // Términos relacionados con la marca o contexto
+  "technovaderm",
+  "technovaderm1",
+  "technova123",
+  "skincare1",
+  "skincare123",
+  "skincare2024",
+  "skincare2025",
+  "skincare2026",
+  "derm1234",
+  "belleza1",
+  "belleza123",
+  "rutina123",
+  "crema1234",
+
+  // Combinaciones de teclado comunes
+  "asdf1234",
+  "zxcv1234",
+  "1q2w3e4r",
+  "1q2w3e4r5t",
+  "abc12345",
+  "abcdef12",
+  "abcdef123",
+  "11111111",
+  "00000000",
+  "87654321",
+]);
+
+/**
+ * Comprueba si una contraseña dada coincide con alguna de las contraseñas comunes
+ */
+export function esContrasenaComun(contrasena: string): boolean {
+  if (!contrasena) return false;
+  return CONTRASENAS_COMUNES.has(contrasena.toLowerCase().trim());
+}

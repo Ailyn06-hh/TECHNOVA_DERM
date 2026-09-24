@@ -1,0 +1,50 @@
+# Dependencias
+node_modules/
+**/node_modules/
+.pnp
+.pnp.js
+
+# Next.js / Builds
+.next/
+**/.next/
+out/
+build/
+dist/
+coverage/
+
+# Entornos y Secretos
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+**/.env.local
+**/.env
+!**/.env.example
+
+# Python
+venv/
+**/venv/
+.venv/
+**/__pycache__/
+*.py[cod]
+*$py.class
+*.db
+*.sqlite3
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# Mobile / Expo
+.expo/
+**/.expo/
+web-build/
+
+# IDEs y Sistema Operativo
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
