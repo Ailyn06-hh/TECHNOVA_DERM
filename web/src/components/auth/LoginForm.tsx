@@ -3,7 +3,7 @@
 import React, { useState } from "react";
 import Link from "next/link";
 import { useSearchParams, useRouter } from "next/navigation";
-import { Lock, Eye, EyeOff, AlertCircle, CheckCircle2, Loader2, ArrowRight } from "lucide-react";
+import { Lock, Eye, EyeOff, AlertCircle, CheckCircle2, Loader2, ArrowRight, ShieldAlert } from "lucide-react";
 import SocialButtons from "./SocialButtons";
 import { normalizarIdentificador, MENSAJES_VALIDACION } from "@/lib/validaciones";
 
@@ -19,10 +19,12 @@ export default function LoginForm() {
   const [showPassword, setShowPassword] = useState(false);
   const [errors, setErrors] = useState<{ identifier?: string; password?: string }>({});
   const [generalError, setGeneralError] = useState<string | null>(null);
+  const [blockedNotice, setBlockedNotice] = useState<{ message: string; canRecover?: boolean } | null>(null);
   const [unverifiedNotice, setUnverifiedNotice] = useState<{ error: string; correo: string } | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [successUser, setSuccessUser] = useState<any>(null);
 
+  // Validación al enviar con foco al primer campo con error
   const validate = () => {
     const newErrors: { identifier?: string; password?: string } = {};
 
@@ -33,11 +35,28 @@ export default function LoginForm() {
       newErrors.identifier = MENSAJES_VALIDACION.IDENTIFICADOR_INVALIDO;
     }
 
+    // En login NO se validan reglas de complejidad de contraseña, solo que no esté vacía
     if (!password) {
       newErrors.password = MENSAJES_VALIDACION.CONTRASENA_REQUERIDA;
     }
 
     setErrors(newErrors);
+
+    // Foco al primer campo con error
+    if (newErrors.identifier) {
+      const el = document.getElementById("identifier");
+      if (el) {
+        el.focus();
+        el.scrollIntoView({ behavior: "smooth", block: "center" });
+      }
+    } else if (newErrors.password) {
+      const el = document.getElementById("password");
+      if (el) {
+        el.focus();
+        el.scrollIntoView({ behavior: "smooth", block: "center" });
+      }
+    }
+
     return Object.keys(newErrors).length === 0;
   };
 
@@ -49,6 +68,7 @@ export default function LoginForm() {
     try {
       setIsSubmitting(true);
       setGeneralError(null);
+      setBlockedNotice(null);
       setUnverifiedNotice(null);
 
       const norm = normalizarIdentificador(identifier);
@@ -72,8 +92,14 @@ export default function LoginForm() {
             error: data.error || "Tu cuenta aún no está verificada.",
             correo: data.correo || identifier,
           });
+        } else if (data.blocked) {
+          // Bloqueo por intentos repetidos
+          setBlockedNotice({
+            message: data.error || "Demasiados intentos. Intenta de nuevo más tarde.",
+            canRecover: Boolean(data.canRecover),
+          });
         } else {
-          setGeneralError(data.error || "Ocurrió un error al iniciar sesión.");
+          setGeneralError(data.error || "Correo, celular o contraseña incorrectos.");
         }
         return;
       }
@@ -121,6 +147,32 @@ export default function LoginForm() {
         </div>
       )}
 
+      {/* Aviso de bloqueo por intentos fallidos (Rate limit brute force) */}
+      {blockedNotice && (
+        <div className="mb-6 p-4 bg-amber-50 border border-amber-200 text-amber-900 text-xs rounded-2xl animate-fade-in shadow-sm">
+          <div className="flex items-start gap-2.5">
+            <ShieldAlert className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <p className="font-medium mb-1">Acceso restringido temporalmente</p>
+              <p className="text-amber-800 font-light leading-relaxed">
+                {blockedNotice.message}.
+              </p>
+              {blockedNotice.canRecover && (
+                <div className="mt-2.5">
+                  <Link
+                    href="/recuperar"
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[#6B1F4A] text-white text-[11px] font-semibold hover:bg-[#58183D] transition shadow-xs"
+                  >
+                    <span>Recuperar contraseña</span>
+                    <ArrowRight className="w-3.5 h-3.5" />
+                  </Link>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Aviso de cuenta no verificada */}
       {unverifiedNotice && (
         <div className="mb-6 p-4 bg-[#FDF4F6] border border-[#F3E1E4] text-[#6B1F4A] text-xs rounded-2xl animate-fade-in shadow-sm">
@@ -147,7 +199,11 @@ export default function LoginForm() {
 
       {/* Error general */}
       {generalError && (
-        <div className="mb-6 p-3.5 bg-rose-50 border border-rose-200 text-rose-800 text-xs rounded-xl flex items-start gap-2 animate-fade-in">
+        <div
+          role="alert"
+          aria-live="assertive"
+          className="mb-6 p-3.5 bg-rose-50 border border-rose-200 text-rose-800 text-xs rounded-xl flex items-start gap-2 animate-fade-in"
+        >
           <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
           <span>{generalError}</span>
         </div>
@@ -182,6 +238,7 @@ export default function LoginForm() {
                 setIdentifier(e.target.value);
                 if (errors.identifier) setErrors((prev) => ({ ...prev, identifier: undefined }));
                 if (generalError) setGeneralError(null);
+                if (blockedNotice) setBlockedNotice(null);
                 if (unverifiedNotice) setUnverifiedNotice(null);
               }}
               placeholder="ana.lopez@correo.com"
@@ -200,7 +257,7 @@ export default function LoginForm() {
           )}
         </div>
 
-        {/* Campo: Contraseña */}
+        {/* Campo: Contraseña (solo obligatoria, sin mostrar reglas) */}
         <div>
           <label htmlFor="password" className="block text-xs font-semibold text-gray-800 mb-1.5">
             Contraseña
@@ -221,6 +278,7 @@ export default function LoginForm() {
                 setPassword(e.target.value);
                 if (errors.password) setErrors((prev) => ({ ...prev, password: undefined }));
                 if (generalError) setGeneralError(null);
+                if (blockedNotice) setBlockedNotice(null);
               }}
               placeholder="••••••••••"
               className={`w-full pl-10 pr-10 py-2.5 rounded-xl border bg-white text-xs sm:text-sm text-gray-900 placeholder-gray-400 transition shadow-sm focus:outline-none focus:ring-2 focus:ring-[#6B1F4A]/30 focus:border-[#6B1F4A] ${

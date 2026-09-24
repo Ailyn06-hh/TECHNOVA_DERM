@@ -3,40 +3,122 @@ import bcrypt from "bcryptjs";
 import { getDbPool } from "@/lib/db";
 import { encodePendingUser, PENDING_COOKIE_NAME } from "@/lib/auth-verification";
 import { setAuthSessionCookie } from "@/lib/session";
-import { normalizarIdentificador, MENSAJES_VALIDACION } from "@/lib/validaciones";
+import { normalizarIdentificador } from "@/lib/validaciones";
+import { obtenerIpCliente } from "@/lib/rate-limiter";
+
+// Hash ficticio precalculado con bcrypt cost factor 10 para mitigar timing attacks si el usuario no existe
+const DUMMY_HASH = "$2a$10$7EqJtq98hPqEX7fNZaFWoO0LqgP2Lw5jO8L7vC9GZJ1.M7n0O7A5m";
 
 export async function POST(req: NextRequest) {
   try {
-    const body = await req.json();
-    const { identifier, password } = body;
+    const ip = obtenerIpCliente(req);
+    const pool = getDbPool();
 
-    if (!identifier || !password) {
+    let body: any;
+    try {
+      body = await req.json();
+    } catch {
       return NextResponse.json(
-        { error: "Por favor ingresa tu correo/celular y contraseña." },
+        { error: "Cuerpo de solicitud JSON malformado." },
+        { status: 400 }
+      );
+    }
+
+    const { identifier, password, rememberMe } = body;
+
+    // 1. Validación de campos obligatorios en el cliente / servidor
+    if (!identifier || typeof identifier !== "string" || !identifier.trim()) {
+      return NextResponse.json(
+        { error: "Por favor ingresa tu correo electrónico o celular.", field: "identifier" },
+        { status: 400 }
+      );
+    }
+
+    if (!password || typeof password !== "string") {
+      return NextResponse.json(
+        { error: "Por favor ingresa tu contraseña.", field: "password" },
         { status: 400 }
       );
     }
 
     const norm = normalizarIdentificador(identifier);
-    if (!norm.esValido && !identifier.trim()) {
+    if (!norm.esValido) {
       return NextResponse.json(
-        { error: MENSAJES_VALIDACION.IDENTIFICADOR_REQUERIDO },
+        {
+          error: "Ingresa un correo electrónico válido o un celular de 10 dígitos.",
+          field: "identifier",
+        },
         { status: 400 }
       );
     }
 
-    const pool = getDbPool();
-
-    // 1. Buscar usuario por correo o teléfono normalizado (10 dígitos o correo limpio)
-    const [rows]: any = await pool.execute(
-      `SELECT id, nombre, apellido, correo, celular, password_hash, verificado, onboarding_omitido 
-       FROM usuarios 
-       WHERE correo = ? OR (celular = ? AND ? != '') 
-       LIMIT 1`,
-      [norm.valor, norm.valor, norm.valor]
+    // 2. Protección contra fuerza bruta: Verificar bloqueo por IP (20 fallos en 15 minutos)
+    const [ipRows]: any = await pool.execute(
+      `SELECT COUNT(*) as total_fallos, MAX(creado_en) as ultimo_fallo 
+       FROM intentos_login 
+       WHERE ip = ? AND exitoso = 0 AND creado_en >= DATE_SUB(NOW(), INTERVAL 15 MINUTE)`,
+      [ip]
     );
 
+    const fallosIp = ipRows[0]?.total_fallos || 0;
+    if (fallosIp >= 20) {
+      const ultimoFalloDate = new Date(ipRows[0].ultimo_fallo).getTime();
+      const tiempoRestanteMs = 15 * 60 * 1000 - (Date.now() - ultimoFalloDate);
+      const minutosRestantes = Math.max(1, Math.ceil(tiempoRestanteMs / (60 * 1000)));
+
+      return NextResponse.json(
+        {
+          error: `Demasiados intentos fallidos desde esta conexión. Intenta de nuevo en ${minutosRestantes} minutos.`,
+          blocked: true,
+        },
+        { status: 429 }
+      );
+    }
+
+    // 3. Protección contra fuerza bruta: Verificar bloqueo por Identificador (5 fallos en 15 minutos)
+    const [idRows]: any = await pool.execute(
+      `SELECT COUNT(*) as total_fallos, MAX(creado_en) as ultimo_fallo 
+       FROM intentos_login 
+       WHERE identificador = ? AND exitoso = 0 AND creado_en >= DATE_SUB(NOW(), INTERVAL 15 MINUTE)`,
+      [norm.valor]
+    );
+
+    const fallosIdentificador = idRows[0]?.total_fallos || 0;
+    if (fallosIdentificador >= 5) {
+      const ultimoFalloDate = new Date(idRows[0].ultimo_fallo).getTime();
+      const tiempoRestanteMs = 15 * 60 * 1000 - (Date.now() - ultimoFalloDate);
+      const minutosRestantes = Math.max(1, Math.ceil(tiempoRestanteMs / (60 * 1000)));
+
+      return NextResponse.json(
+        {
+          error: `Demasiados intentos. Intenta de nuevo en ${minutosRestantes} minutos o recupera tu contraseña`,
+          blocked: true,
+          canRecover: true,
+        },
+        { status: 429 }
+      );
+    }
+
+    // 4. Buscar usuario por correo o celular según el tipo detectado
+    let userQuery = "";
+    if (norm.tipo === "correo") {
+      userQuery = "SELECT id, nombre, apellido, correo, celular, password_hash, verificado, onboarding_omitido FROM usuarios WHERE correo = ? LIMIT 1";
+    } else {
+      userQuery = "SELECT id, nombre, apellido, correo, celular, password_hash, verificado, onboarding_omitido FROM usuarios WHERE celular = ? LIMIT 1";
+    }
+
+    const [rows]: any = await pool.execute(userQuery, [norm.valor]);
+
+    // 5. Si el usuario no existe: se ejecuta bcrypt.compare con el hash ficticio para mitigar timing attacks
     if (!rows || rows.length === 0) {
+      await bcrypt.compare(password, DUMMY_HASH);
+
+      // Registrar intento fallido
+      await pool.execute(
+        "INSERT INTO intentos_login (identificador, ip, exitoso) VALUES (?, ?, 0)",
+        [norm.valor, ip]
+      );
+
       return NextResponse.json(
         { error: "Correo, celular o contraseña incorrectos." },
         { status: 401 }
@@ -45,21 +127,32 @@ export async function POST(req: NextRequest) {
 
     const user = rows[0];
 
-    // 2. Verificar contraseña con bcrypt
+    // 6. Verificar contraseña con bcrypt
     const passwordMatch = await bcrypt.compare(password, user.password_hash);
     if (!passwordMatch) {
+      // Registrar intento fallido
+      await pool.execute(
+        "INSERT INTO intentos_login (identificador, ip, exitoso) VALUES (?, ?, 0)",
+        [norm.valor, ip]
+      );
+
       return NextResponse.json(
         { error: "Correo, celular o contraseña incorrectos." },
         { status: 401 }
       );
     }
 
-    // 3. Verificar si la cuenta ya completó la verificación
+    // 7. Credenciales correctas: si la cuenta no está verificada, no iniciar sesión
     if (user.verificado === 0) {
-      // Configurar la cookie de verificación para que el usuario pueda entrar directamente a /verificar
+      // Registrar intento exitoso de credenciales
+      await pool.execute(
+        "INSERT INTO intentos_login (identificador, ip, exitoso) VALUES (?, ?, 1)",
+        [norm.valor, ip]
+      );
+
       const response = NextResponse.json(
         {
-          error: "Tu cuenta aún no ha sido verificada. Te enviamos un código a tu correo.",
+          error: "Tu cuenta aún no está verificada. Te enviamos un código a tu correo para activarla.",
           unverified: true,
           correo: user.correo,
         },
@@ -86,7 +179,18 @@ export async function POST(req: NextRequest) {
       return response;
     }
 
-    // 4. Usuario verificado y credenciales correctas: verificar estado del onboarding
+    // 8. Inicio de sesión exitoso: reiniciar el contador de intentos fallidos de este identificador
+    await pool.execute(
+      "DELETE FROM intentos_login WHERE identificador = ? AND exitoso = 0",
+      [norm.valor]
+    );
+
+    await pool.execute(
+      "INSERT INTO intentos_login (identificador, ip, exitoso) VALUES (?, ?, 1)",
+      [norm.valor, ip]
+    );
+
+    // 9. Verificar estado del perfil de piel (Onboarding)
     const [profileRows]: any = await pool.execute(
       "SELECT id FROM perfiles_piel WHERE usuario_id = ? LIMIT 1",
       [user.id]
@@ -94,8 +198,6 @@ export async function POST(req: NextRequest) {
 
     const hasProfile = Boolean(profileRows && profileRows.length > 0);
     const onboardingSkipped = Boolean(user.onboarding_omitido);
-
-    // Si no tiene perfil y no lo ha omitido, redirigir a /onboarding/perfil
     const redirectUrl = !hasProfile && !onboardingSkipped ? "/onboarding/perfil" : "/";
 
     const response = NextResponse.json(
@@ -113,13 +215,19 @@ export async function POST(req: NextRequest) {
       { status: 200 }
     );
 
-    // Establecer la cookie httpOnly de sesión autenticada
-    setAuthSessionCookie(response, {
-      userId: user.id,
-      correo: user.correo,
-      nombre: user.nombre,
-      verificado: true,
-    });
+    // 10. Configurar cookie de sesión:
+    // - Recordarme sin marcar: máximo 12 horas
+    // - Recordarme marcado: 30 días
+    setAuthSessionCookie(
+      response,
+      {
+        userId: user.id,
+        correo: user.correo,
+        nombre: user.nombre,
+        verificado: true,
+      },
+      { rememberMe: Boolean(rememberMe) }
+    );
 
     return response;
   } catch (error: any) {

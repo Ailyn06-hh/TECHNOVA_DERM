@@ -66,10 +66,20 @@ export function getAuthUserServer(): SessionUser | null {
 }
 
 /**
- * Aplica la cookie de sesión autenticada a una NextResponse
+ * Aplica la cookie de sesión autenticada a una NextResponse.
+ * - "Recordarme" marcado: 30 días
+ * - "Recordarme" sin marcar: máximo 12 horas
  */
-export function setAuthSessionCookie(response: NextResponse, user: SessionUser): void {
+export function setAuthSessionCookie(
+  response: NextResponse,
+  user: SessionUser,
+  options?: { rememberMe?: boolean }
+): void {
   const token = createSessionToken(user);
+  const maxAge = options?.rememberMe
+    ? 60 * 60 * 24 * 30 // 30 días
+    : 60 * 60 * 12; // Máximo 12 horas
+
   response.cookies.set({
     name: AUTH_COOKIE_NAME,
     value: token,
@@ -77,7 +87,7 @@ export function setAuthSessionCookie(response: NextResponse, user: SessionUser):
     secure: process.env.NODE_ENV === "production",
     sameSite: "lax",
     path: "/",
-    maxAge: 60 * 60 * 24 * 7, // 7 días de sesión
+    maxAge,
   });
 }
 
