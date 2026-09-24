@@ -1,62 +1,169 @@
 import React from "react";
+import type { Metadata } from "next";
 import { redirect } from "next/navigation";
-import Link from "next/link";
 import { getAuthUserServer } from "@/lib/session";
-import StoreLayout from "@/components/layout/StoreLayout";
-import { ArrowLeft, CreditCard, ShieldCheck } from "lucide-react";
+import { getCartForServer } from "@/lib/carrito";
+import { getDbPool } from "@/lib/db";
+import { NOMBRE_MARCA } from "@/lib/marca";
+import CheckoutLayout from "@/components/checkout/CheckoutLayout";
+import CheckoutPageClient from "@/components/checkout/CheckoutPageClient";
+import type { SucursalCalculada } from "@/components/checkout/StoreSelectModal";
 
 export const dynamic = "force-dynamic";
 
-export default async function CheckoutPage() {
-  const user = getAuthUserServer();
+export const metadata: Metadata = {
+  title: `Entrega y Pago | ${NOMBRE_MARCA}`,
+  description: `Completa tu orden de compra en ${NOMBRE_MARCA} de forma segura.`,
+};
 
+export default async function CheckoutRoute() {
+  // 1. Proteger ruta con sesión de usuario
+  const user = getAuthUserServer();
   if (!user?.userId) {
     redirect("/login?volver=/checkout");
   }
 
+  // 2. Obtener y validar el carrito del usuario
+  const { carrito, cartId } = await getCartForServer();
+
+  if (!carrito.tieneArticulos || carrito.totalItems === 0) {
+    redirect("/carrito");
+  }
+
+  if (carrito.hayAgotados || carrito.hayInsuficientes) {
+    redirect("/carrito?error=articulos_sin_stock");
+  }
+
+  const pool = getDbPool();
+
+  // 3. Consultar direcciones guardadas
+  const [dirRows]: any = await pool.execute(
+    `SELECT id, usuario_id, alias, calle, numero_exterior, numero_interior, colonia, 
+            codigo_postal, ciudad, estado, referencias, predeterminada 
+     FROM direcciones 
+     WHERE usuario_id = ? 
+     ORDER BY predeterminada DESC, id DESC`,
+    [user.userId]
+  );
+
+  // 4. Consultar métodos de pago guardados
+  const [cardRows]: any = await pool.execute(
+    `SELECT id, proveedor, marca, ultimos4, titular, mes_vencimiento, anio_vencimiento, predeterminado 
+     FROM metodos_pago 
+     WHERE usuario_id = ? 
+     ORDER BY predeterminado DESC, id DESC`,
+    [user.userId]
+  );
+
+  // 5. Consultar sucursales activas y calcular existencias de la orden
+  const [sucRows]: any = await pool.execute(
+    `SELECT id, nombre, direccion, direccion_corta, hora_apertura, hora_cierre, minutos_preparacion 
+     FROM sucursales 
+     WHERE activa = 1 
+     ORDER BY id ASC`
+  );
+
+  const distinctProductIds = Array.from(
+    new Set(carrito.items.map((i) => i.producto_id).filter(Boolean))
+  );
+
+  const now = new Date();
+
+  const sucursalesCalculadas: SucursalCalculada[] = await Promise.all(
+    (sucRows || []).map(async (suc: any) => {
+      let productosDisponibles = 0;
+
+      if (distinctProductIds.length > 0) {
+        const placeholders = distinctProductIds.map(() => "?").join(",");
+        const [invRows]: any = await pool.execute(
+          `SELECT producto_id, existencias 
+           FROM inventario 
+           WHERE sucursal_id = ? AND producto_id IN (${placeholders})`,
+          [suc.id, ...distinctProductIds]
+        );
+
+        const invMap = new Map<number, number>();
+        for (const row of invRows || []) {
+          invMap.set(Number(row.producto_id), Number(row.existencias || 0));
+        }
+
+        for (const cItem of carrito.items) {
+          const stock = invMap.get(Number(cItem.producto_id)) || 0;
+          if (stock >= cItem.cantidad) {
+            productosDisponibles++;
+          }
+        }
+      }
+
+      const tieneTodo = productosDisponibles === carrito.items.length;
+      const faltanN = carrito.items.length - productosDisponibles;
+
+      const minutosPrep = Number(suc.minutos_preparacion || 120);
+      const [cierreH, cierreM] = (suc.hora_cierre || "20:00:00").split(":").map(Number);
+      const [aperturaH, aperturaM] = (suc.hora_apertura || "10:00:00").split(":").map(Number);
+
+      const readyDate = new Date(now.getTime() + minutosPrep * 60 * 1000);
+      if (readyDate.getMinutes() > 0 || readyDate.getSeconds() > 0) {
+        readyDate.setHours(readyDate.getHours() + 1);
+        readyDate.setMinutes(0, 0, 0);
+      }
+
+      const cierreDate = new Date(now);
+      cierreDate.setHours(cierreH, cierreM, 0, 0);
+
+      let puedeRecogerHoy = false;
+      let horaEstimadaTexto = "";
+
+      if (readyDate.getTime() <= cierreDate.getTime() && now.getHours() < cierreH) {
+        puedeRecogerHoy = true;
+        const hh = String(readyDate.getHours()).padStart(2, "0");
+        const mm = String(readyDate.getMinutes()).padStart(2, "0");
+        horaEstimadaTexto = `Hoy desde ${hh}:${mm}`;
+      } else {
+        const mañanaReadyH = aperturaH + Math.floor(minutosPrep / 60);
+        const mañanaReadyM = aperturaM + (minutosPrep % 60);
+        const hh = String(mañanaReadyH).padStart(2, "0");
+        const mm = String(mañanaReadyM).padStart(2, "0");
+        horaEstimadaTexto = `Mañana desde ${hh}:${mm}`;
+      }
+
+      return {
+        id: Number(suc.id),
+        nombre: suc.nombre.startsWith(NOMBRE_MARCA)
+          ? suc.nombre
+          : `${NOMBRE_MARCA} ${suc.nombre}`,
+        nombreCorto: suc.nombre,
+        direccion: suc.direccion,
+        direccion_corta: suc.direccion_corta || suc.direccion.split(",")[0],
+        hora_apertura: suc.hora_apertura,
+        hora_cierre: suc.hora_cierre,
+        minutos_preparacion: minutosPrep,
+        totalProductos: carrito.items.length,
+        productosDisponibles,
+        faltanN: Math.max(0, faltanN),
+        tieneTodo,
+        puedeRecogerHoy,
+        horaEstimadaTexto,
+      };
+    })
+  );
+
+  // Consultar sucursal preferida del usuario
+  const [userProfile]: any = await pool.execute(
+    "SELECT sucursal_preferida_id FROM usuarios WHERE id = ? LIMIT 1",
+    [user.userId]
+  );
+  const sucursalPreferidaId = userProfile?.[0]?.sucursal_preferida_id || null;
+
   return (
-    <StoreLayout>
-      <div className="min-h-screen bg-[#FAF8F5] py-14 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-2xl mx-auto bg-white rounded-3xl p-8 sm:p-10 border border-slate-100 shadow-sm text-center">
-          <div className="w-14 h-14 bg-rose-50 text-[#6B1F4A] rounded-2xl flex items-center justify-center mx-auto mb-4">
-            <CreditCard className="w-7 h-7" />
-          </div>
-
-          <h1 className="font-serif text-3xl font-medium text-slate-900 mb-2">
-            Pasarela de Pago y Entrega
-          </h1>
-          <p className="text-slate-500 text-sm font-light mb-6">
-            Hola, <strong className="font-semibold text-slate-700">{user.nombre}</strong>. Esta pantalla es el paso final de pago omnicanal.
-          </p>
-
-          <div className="bg-[#FAF9F6] border border-slate-200/70 rounded-2xl p-5 mb-8 text-left space-y-3">
-            <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-[#6B1F4A]">
-              <ShieldCheck className="w-4 h-4" />
-              <span>Próxima integración</span>
-            </div>
-            {/* TODO: Integrar pasarela de pago (Stripe/OpenPay) y selección de entrega omnicanal (recogida en sucursal o envío a domicilio) */}
-            <p className="text-xs text-slate-600 font-light leading-relaxed">
-              Selección de método de entrega (Recoger en tienda o Envío estándar) y procesamiento seguro de tarjeta bancaria.
-            </p>
-          </div>
-
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
-            <Link
-              href="/carrito"
-              className="inline-flex items-center gap-2 px-6 py-3 rounded-full bg-white border border-slate-200 text-slate-700 text-xs sm:text-sm font-medium hover:bg-slate-50 transition active:scale-[0.98]"
-            >
-              <ArrowLeft className="w-4 h-4" />
-              <span>Volver a mi carrito</span>
-            </Link>
-            <Link
-              href="/catalogo"
-              className="inline-flex items-center gap-2 px-6 py-3 rounded-full bg-[#1A1715] text-white text-xs sm:text-sm font-medium hover:bg-[#2C2724] transition active:scale-[0.98]"
-            >
-              <span>Explorar catálogo</span>
-            </Link>
-          </div>
-        </div>
-      </div>
-    </StoreLayout>
+    <CheckoutLayout>
+      <CheckoutPageClient
+        initialCarrito={carrito}
+        initialSucursales={sucursalesCalculadas}
+        initialDirecciones={dirRows || []}
+        initialMetodosPago={cardRows || []}
+        sucursalPreferidaId={sucursalPreferidaId}
+      />
+    </CheckoutLayout>
   );
 }

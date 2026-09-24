@@ -95,7 +95,10 @@ export default function CompleteRoutine({ rutinaData }: CompleteRoutineProps) {
       const res = await fetch("/api/carrito/rutina", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ productoIds: selectedIds }),
+        body: JSON.stringify({
+          clave: "manana",
+          productoIds: selectedIds,
+        }),
       });
 
       const data = await res.json();

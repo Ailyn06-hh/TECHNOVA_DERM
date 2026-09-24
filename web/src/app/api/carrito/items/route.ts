@@ -60,7 +60,7 @@ export async function POST(req: NextRequest) {
 
       // Consultar cantidad ya presente en el carrito
       const [existingRows]: any = await pool.execute(
-        "SELECT id, cantidad FROM carrito_items WHERE carrito_id = ? AND producto_id = ? LIMIT 1",
+        "SELECT id, cantidad FROM carrito_items WHERE carrito_id = ? AND producto_id = ? AND eliminado_en IS NULL LIMIT 1",
         [cartId, pId]
       );
 
@@ -104,6 +104,7 @@ export async function POST(req: NextRequest) {
           ]
         );
       }
+    } else if (combo_id) {
       // 2. Agregar Combo
       const cId = Number(combo_id);
 
@@ -127,7 +128,7 @@ export async function POST(req: NextRequest) {
           cp.producto_id, 
           cp.cantidad, 
           p.precio, 
-          p.precio_especial,
+          p.precio_especial, 
           COALESCE(SUM(i.existencias), 0) as total_stock
          FROM combo_productos cp
          JOIN productos p ON p.id = cp.producto_id
@@ -168,7 +169,7 @@ export async function POST(req: NextRequest) {
       const precioUnitarioCombo = Math.round(subtotalSinDesc * (1 - descuentoPct / 100));
 
       const [existingComboRows]: any = await pool.execute(
-        "SELECT id, cantidad FROM carrito_items WHERE carrito_id = ? AND combo_id = ? LIMIT 1",
+        "SELECT id, cantidad FROM carrito_items WHERE carrito_id = ? AND combo_id = ? AND eliminado_en IS NULL LIMIT 1",
         [cartId, cId]
       );
 
@@ -190,7 +191,7 @@ export async function POST(req: NextRequest) {
 
     // Calcular nuevo total de items
     const [countRows]: any = await pool.execute(
-      "SELECT COALESCE(SUM(cantidad), 0) as total_items FROM carrito_items WHERE carrito_id = ?",
+      "SELECT COALESCE(SUM(cantidad), 0) as total_items FROM carrito_items WHERE carrito_id = ? AND eliminado_en IS NULL",
       [cartId]
     );
 
@@ -199,6 +200,7 @@ export async function POST(req: NextRequest) {
     const successResponse = NextResponse.json(
       {
         success: true,
+        exito: true,
         message: "Agregado a tu bolsa",
         totalItems,
       },

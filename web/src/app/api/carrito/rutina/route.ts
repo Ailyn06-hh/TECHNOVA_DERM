@@ -10,12 +10,7 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
     const { clave, tipoPiel, productoIds } = body;
 
-    if (!clave || typeof clave !== "string") {
-      return NextResponse.json(
-        { error: "Debes especificar la clave de la rutina (ej. manana o noche)." },
-        { status: 400 }
-      );
-    }
+    const claveFinal = (clave && typeof clave === "string" ? clave : "manana").trim();
 
     if (!Array.isArray(productoIds) || productoIds.length === 0) {
       return NextResponse.json(
@@ -37,12 +32,12 @@ export async function POST(req: NextRequest) {
     // 1. Obtener la plantilla de rutina activa
     const [plantillaRows]: any = await pool.execute(
       "SELECT id, clave, nombre, descuento_porcentaje FROM plantillas_rutina WHERE clave = ? AND activa = 1 LIMIT 1",
-      [clave]
+      [claveFinal]
     );
 
     if (!plantillaRows || plantillaRows.length === 0) {
       return NextResponse.json(
-        { error: `La plantilla de rutina "${clave}" no existe o no está activa.` },
+        { error: `La plantilla de rutina "${claveFinal}" no existe o no está activa.` },
         { status: 404 }
       );
     }
@@ -164,7 +159,7 @@ export async function POST(req: NextRequest) {
 
     // 7. Obtener nuevo total de ítems en el carrito
     const [countRows]: any = await pool.execute(
-      "SELECT COALESCE(SUM(cantidad), 0) as totalItems FROM carrito_items WHERE carrito_id = ?",
+      "SELECT COALESCE(SUM(cantidad), 0) as totalItems FROM carrito_items WHERE carrito_id = ? AND eliminado_en IS NULL",
       [cartId]
     );
 
@@ -173,6 +168,7 @@ export async function POST(req: NextRequest) {
     const successResponse = NextResponse.json(
       {
         success: true,
+        exito: true,
         message: "Rutina agregada a tu bolsa",
         totalItems,
         grupoId,

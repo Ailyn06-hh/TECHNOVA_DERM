@@ -140,7 +140,7 @@ export default function CartPage({
 
       const data = await res.json();
 
-      if (!res.ok || !data.exito) {
+      if (!res.ok || (!data.exito && !data.success)) {
         showToast({
           message: data.error || "No se pudo actualizar la cantidad.",
           type: "error",
@@ -172,7 +172,7 @@ export default function CartPage({
 
       const data = await res.json();
 
-      if (!res.ok || !data.exito) {
+      if (!res.ok || (!data.exito && !data.success)) {
         showToast({
           message: data.error || "No se pudo eliminar el artículo.",
           type: "error",
@@ -180,7 +180,7 @@ export default function CartPage({
         return;
       }
 
-      const itemEliminado = data.itemEliminado;
+      const itemEliminado = data.itemEliminado || { nombre: data.productoNombre };
       const avisoGrupo = data.avisoGrupo;
 
       setCarrito(data.carrito);
@@ -205,7 +205,7 @@ export default function CartPage({
               method: "POST",
             });
             const restoreData = await restoreRes.json();
-            if (restoreRes.ok && restoreData.exito) {
+            if (restoreRes.ok && (restoreData.exito || restoreData.success)) {
               setCarrito(restoreData.carrito);
               await refreshGlobalBadge();
               broadcastUpdate();

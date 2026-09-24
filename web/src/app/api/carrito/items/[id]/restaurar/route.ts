@@ -44,6 +44,7 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
     const successResponse = NextResponse.json(
       {
         success: true,
+        exito: true,
         message: "Artículo restaurado en tu carrito",
         carrito: carritoCalculado,
       },

@@ -112,6 +112,7 @@ export async function PATCH(req: NextRequest, { params }: RouteParams) {
     const successResponse = NextResponse.json(
       {
         success: true,
+        exito: true,
         message: "Cantidad actualizada",
         carrito: carritoCalculado,
       },
@@ -197,11 +198,14 @@ export async function DELETE(req: NextRequest, { params }: RouteParams) {
     const successResponse = NextResponse.json(
       {
         success: true,
+        exito: true,
         message: `Quitaste ${item.nombre}`,
         itemId,
+        itemEliminado: { id: item.id, nombre: item.nombre },
         productoNombre: item.nombre,
         eraDeGrupo,
         descuentoPorcentaje,
+        avisoGrupo: eraDeGrupo ? "Se actualizó el descuento de la rutina." : undefined,
         carrito: carritoCalculado,
       },
       { status: 200 }
